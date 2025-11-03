@@ -17,11 +17,12 @@ import (
 func TestCreateHandler(t *testing.T) {
 	repo := repository.NewMemoryStorage()
 	s := service.NewShortenerService(repo)
+	baseURL := "http://localhost:8080"
 
 	t.Run("valid url", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/", strings.NewReader("https://yandex.ru"))
 		w := httptest.NewRecorder()
-		CreateHandler(w, req, s)
+		CreateHandler(w, req, s, baseURL)
 
 		resp := w.Result()
 		defer resp.Body.Close()
@@ -35,7 +36,7 @@ func TestCreateHandler(t *testing.T) {
 	t.Run("empty body", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/", strings.NewReader(""))
 		w := httptest.NewRecorder()
-		CreateHandler(w, req, s)
+		CreateHandler(w, req, s, baseURL)
 
 		resp := w.Result()
 		defer resp.Body.Close()
@@ -80,6 +81,6 @@ func TestRedirectHandler(t *testing.T) {
 		resp := w.Result()
 		defer resp.Body.Close()
 
-		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 }

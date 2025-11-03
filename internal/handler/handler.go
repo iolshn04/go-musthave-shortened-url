@@ -9,7 +9,7 @@ import (
 	"github.com/iolshn04/go-musthave-shortened-url/internal/service"
 )
 
-func CreateHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerService) {
+func CreateHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerService, baseURL string) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil || len(body) == 0 {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -23,7 +23,7 @@ func CreateHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerS
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte("http://localhost:8080/" + id))
+	w.Write([]byte(baseURL + "/" + id))
 }
 
 func RedirectHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerService) {
@@ -35,7 +35,7 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request, s *service.Shortene
 
 	original, err := s.GetOriginal(id)
 	if err == repository.ErrNotFound {
-		http.Error(w, "not found", http.StatusBadRequest)
+		http.Error(w, "not found", http.StatusNotFound)
 		return
 	} else if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -46,10 +46,10 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request, s *service.Shortene
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
-func NewRouter(s *service.ShortenerService) *chi.Mux {
+func NewRouter(s *service.ShortenerService, baseURL string) *chi.Mux {
 	r := chi.NewRouter()
 	r.Post("/", func(w http.ResponseWriter, r *http.Request) {
-		CreateHandler(w, r, s)
+		CreateHandler(w, r, s, baseURL)
 	})
 	r.Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
 		RedirectHandler(w, r, s)
