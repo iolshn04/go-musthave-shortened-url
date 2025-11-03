@@ -3,18 +3,13 @@ package handler
 import (
 	"io"
 	"net/http"
-	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/iolshn04/go-musthave-shortened-url/internal/repository"
 	"github.com/iolshn04/go-musthave-shortened-url/internal/service"
 )
 
 func CreateHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerService) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
-	}
-
 	body, err := io.ReadAll(r.Body)
 	if err != nil || len(body) == 0 {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -32,12 +27,7 @@ func CreateHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerS
 }
 
 func RedirectHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerService) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
-	}
-
-	id := strings.TrimPrefix(r.URL.Path, "/")
+	id := chi.URLParam(r, "id")
 	if id == "" {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
@@ -56,16 +46,13 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request, s *service.Shortene
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
-func NewRouter(s *service.ShortenerService) *http.ServeMux {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			CreateHandler(w, r, s)
-		} else if r.Method == http.MethodGet {
-			RedirectHandler(w, r, s)
-		} else {
-			http.Error(w, "bad request", http.StatusBadRequest)
-		}
+func NewRouter(s *service.ShortenerService) *chi.Mux {
+	r := chi.NewRouter()
+	r.Post("/", func(w http.ResponseWriter, r *http.Request) {
+		CreateHandler(w, r, s)
 	})
-	return mux
+	r.Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
+		RedirectHandler(w, r, s)
+	})
+	return r
 }
