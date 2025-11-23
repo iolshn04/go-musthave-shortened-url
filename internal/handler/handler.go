@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"github.com/iolshn04/go-musthave-shortened-url/internal/logger"
+	"github.com/iolshn04/go-musthave-shortened-url/internal/middlewares"
 	"io"
 	"net/http"
 
@@ -71,6 +72,8 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request, s *service.Short
 func NewRouter(s *service.ShortenerService, baseURL string) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(logger.RequestLogger)
+	r.Use(middlewares.GzipRequestMiddleware)
+	r.Use(middlewares.GzipMiddleware)
 	r.Post("/", func(w http.ResponseWriter, r *http.Request) {
 		CreateHandler(w, r, s, baseURL)
 	})
