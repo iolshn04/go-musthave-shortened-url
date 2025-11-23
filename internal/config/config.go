@@ -2,6 +2,7 @@ package config
 
 import (
 	"flag"
+	"os"
 )
 
 type Config struct {
@@ -10,11 +11,33 @@ type Config struct {
 }
 
 func NewConfig() *Config {
+	defaultServer := "localhost:8080"
+	defaultBaseURL := "http://localhost:8080"
+
+	fs := flag.NewFlagSet("shortener", flag.ContinueOnError)
+
+	flagServer := fs.String("a", "", "server address")
+	flagBase := fs.String("b", "", "base url")
+
+	_ = fs.Parse(os.Args[1:])
+
 	cfg := &Config{}
 
-	flag.StringVar(&cfg.ServerAddress, "a", "localhost:8080", "HTTP server address")
-	flag.StringVar(&cfg.BaseURL, "b", "http://localhost:8080", "Base URL for short links")
-	flag.Parse()
+	if env := os.Getenv("SERVER_ADDRESS"); env != "" {
+		cfg.ServerAddress = env
+	} else if *flagServer != "" {
+		cfg.ServerAddress = *flagServer
+	} else {
+		cfg.ServerAddress = defaultServer
+	}
+
+	if env := os.Getenv("BASE_URL"); env != "" {
+		cfg.BaseURL = env
+	} else if *flagBase != "" {
+		cfg.BaseURL = *flagBase
+	} else {
+		cfg.BaseURL = defaultBaseURL
+	}
 
 	return cfg
 }
