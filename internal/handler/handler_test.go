@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -83,4 +84,57 @@ func TestRedirectHandler(t *testing.T) {
 
 		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
+}
+
+func TestJSONShortenHandler(t *testing.T) {
+	repo := repository.NewMemoryStorage()
+	s := service.NewShortenerService(repo)
+	baseURL := "http://localhost:8080"
+
+	tests := []struct {
+		name       string
+		body       string
+		wantStatus int
+		wantPrefix string
+	}{
+		{
+			name:       "valid JSON",
+			body:       `{"url":"https://yandex.ru"}`,
+			wantStatus: http.StatusCreated,
+			wantPrefix: baseURL + "/",
+		},
+		{
+			name:       "empty JSON",
+			body:       `{}`,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "invalid JSON",
+			body:       `{"url":`,
+			wantStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("POST", "/api/shorten", strings.NewReader(tt.body))
+			w := httptest.NewRecorder()
+
+			JSONShortenHandler(w, req, s, baseURL)
+
+			resp := w.Result()
+			defer resp.Body.Close()
+
+			assert.Equal(t, tt.wantStatus, resp.StatusCode)
+
+			if tt.wantStatus == http.StatusCreated {
+				var respBody struct {
+					Result string `json:"result"`
+				}
+				err := json.NewDecoder(resp.Body).Decode(&respBody)
+				assert.NoError(t, err)
+				assert.True(t, strings.HasPrefix(respBody.Result, tt.wantPrefix))
+			}
+		})
+	}
 }
