@@ -8,6 +8,7 @@ import (
 type Config struct {
 	ServerAddress string
 	BaseURL       string
+	LogLevel      string
 }
 
 func NewConfig() *Config {
@@ -18,6 +19,7 @@ func NewConfig() *Config {
 
 	flagServer := fs.String("a", "", "server address")
 	flagBase := fs.String("b", "", "base url")
+	flagLogLevel := fs.String("l", "", "log level")
 
 	_ = fs.Parse(os.Args[1:])
 
@@ -37,6 +39,14 @@ func NewConfig() *Config {
 		cfg.BaseURL = *flagBase
 	} else {
 		cfg.BaseURL = defaultBaseURL
+	}
+
+	if env := os.Getenv("LOG_LEVEL"); env != "" {
+		cfg.LogLevel = env
+	} else if *flagLogLevel != "" {
+		cfg.LogLevel = *flagLogLevel
+	} else {
+		cfg.LogLevel = "info"
 	}
 
 	return cfg

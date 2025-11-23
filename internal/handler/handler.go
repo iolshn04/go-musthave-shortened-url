@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"github.com/iolshn04/go-musthave-shortened-url/internal/logger"
 	"io"
 	"net/http"
 
@@ -48,6 +49,7 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request, s *service.Shortene
 
 func NewRouter(s *service.ShortenerService, baseURL string) *chi.Mux {
 	r := chi.NewRouter()
+	r.Use(logger.RequestLogger)
 	r.Post("/", func(w http.ResponseWriter, r *http.Request) {
 		CreateHandler(w, r, s, baseURL)
 	})
