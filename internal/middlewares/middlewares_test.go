@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"go.uber.org/zap"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -22,12 +23,13 @@ func TestJSONShortenHandler_Gzip(t *testing.T) {
 	repo := repository.NewMemoryStorage()
 	s := service.NewShortenerService(repo)
 	baseURL := "http://localhost:8080"
+	log := zap.NewNop()
 
 	r := chi.NewRouter()
 	r.Use(middlewares.GzipRequestMiddleware)
 	r.Use(middlewares.GzipMiddleware)
 	r.Post("/api/shorten", func(w http.ResponseWriter, r *http.Request) {
-		handler.JSONShortenHandler(w, r, s, baseURL)
+		handler.JSONShortenHandler(w, r, s, baseURL, log)
 	})
 
 	srv := httptest.NewServer(r)

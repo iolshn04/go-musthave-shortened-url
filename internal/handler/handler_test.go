@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"go.uber.org/zap"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,11 +20,12 @@ func TestCreateHandler(t *testing.T) {
 	repo := repository.NewMemoryStorage()
 	s := service.NewShortenerService(repo)
 	baseURL := "http://localhost:8080"
+	log := zap.NewNop()
 
 	t.Run("valid url", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/", strings.NewReader("https://yandex.ru"))
 		w := httptest.NewRecorder()
-		CreateHandler(w, req, s, baseURL)
+		CreateHandler(w, req, s, baseURL, log)
 
 		resp := w.Result()
 		defer resp.Body.Close()
@@ -37,7 +39,7 @@ func TestCreateHandler(t *testing.T) {
 	t.Run("empty body", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/", strings.NewReader(""))
 		w := httptest.NewRecorder()
-		CreateHandler(w, req, s, baseURL)
+		CreateHandler(w, req, s, baseURL, log)
 
 		resp := w.Result()
 		defer resp.Body.Close()
@@ -90,6 +92,7 @@ func TestJSONShortenHandler(t *testing.T) {
 	repo := repository.NewMemoryStorage()
 	s := service.NewShortenerService(repo)
 	baseURL := "http://localhost:8080"
+	log := zap.NewNop()
 
 	tests := []struct {
 		name       string
@@ -120,7 +123,7 @@ func TestJSONShortenHandler(t *testing.T) {
 			req := httptest.NewRequest("POST", "/api/shorten", strings.NewReader(tt.body))
 			w := httptest.NewRecorder()
 
-			JSONShortenHandler(w, req, s, baseURL)
+			JSONShortenHandler(w, req, s, baseURL, log)
 
 			resp := w.Result()
 			defer resp.Body.Close()

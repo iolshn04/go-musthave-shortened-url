@@ -12,7 +12,7 @@ func GzipRequestMiddleware(next http.Handler) http.Handler {
 		if r.Header.Get("Content-Encoding") == "gzip" {
 			gr, err := gzip.NewReader(r.Body)
 			if err != nil {
-				http.Error(w, "invalid gzip body", http.StatusBadRequest)
+				http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 				return
 			}
 			r.Body = io.NopCloser(gr)

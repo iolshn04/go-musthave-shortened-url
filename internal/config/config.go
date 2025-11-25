@@ -6,47 +6,59 @@ import (
 )
 
 type Config struct {
-	ServerAddress string
-	BaseURL       string
-	LogLevel      string
+	ServerAddress   string
+	BaseURL         string
+	LogLevel        string
+	FileStoragePath string
 }
 
 func NewConfig() *Config {
-	defaultServer := "localhost:8080"
-	defaultBaseURL := "http://localhost:8080"
+	const (
+		defaultServerAddress   = "localhost:8080"
+		defaultBaseURL         = "http://localhost:8080"
+		defaultLogLevel        = "info"
+		defaultFileStoragePath = "stortened_urls.json"
+	)
 
 	fs := flag.NewFlagSet("shortener", flag.ContinueOnError)
-
 	flagServer := fs.String("a", "", "server address")
 	flagBase := fs.String("b", "", "base url")
 	flagLogLevel := fs.String("l", "", "log level")
-
+	flagFileStoragePath := fs.String("f", "", "file storage path")
 	_ = fs.Parse(os.Args[1:])
 
 	cfg := &Config{}
 
-	if env := os.Getenv("SERVER_ADDRESS"); env != "" {
-		cfg.ServerAddress = env
+	if val, ok := os.LookupEnv("SERVER_ADDRESS"); ok {
+		cfg.ServerAddress = val
 	} else if *flagServer != "" {
 		cfg.ServerAddress = *flagServer
 	} else {
-		cfg.ServerAddress = defaultServer
+		cfg.ServerAddress = defaultServerAddress
 	}
 
-	if env := os.Getenv("BASE_URL"); env != "" {
-		cfg.BaseURL = env
+	if val, ok := os.LookupEnv("BASE_URL"); ok {
+		cfg.BaseURL = val
 	} else if *flagBase != "" {
 		cfg.BaseURL = *flagBase
 	} else {
 		cfg.BaseURL = defaultBaseURL
 	}
 
-	if env := os.Getenv("LOG_LEVEL"); env != "" {
-		cfg.LogLevel = env
+	if val, ok := os.LookupEnv("LOG_LEVEL"); ok {
+		cfg.LogLevel = val
 	} else if *flagLogLevel != "" {
 		cfg.LogLevel = *flagLogLevel
 	} else {
-		cfg.LogLevel = "info"
+		cfg.LogLevel = defaultLogLevel
+	}
+
+	if val, ok := os.LookupEnv("FILE_STORAGE_PATH"); ok {
+		cfg.FileStoragePath = val
+	} else if *flagFileStoragePath != "" {
+		cfg.FileStoragePath = *flagFileStoragePath
+	} else {
+		cfg.FileStoragePath = defaultFileStoragePath
 	}
 
 	return cfg
