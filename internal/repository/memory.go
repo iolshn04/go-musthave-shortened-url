@@ -4,7 +4,7 @@ import "sync"
 
 type memoryStorage struct {
 	data map[string]string
-	mu   sync.RWMutex
+	mu   sync.Mutex
 }
 
 func NewMemoryStorage() Repository {
@@ -19,8 +19,8 @@ func (m *memoryStorage) Save(id, original string) error {
 }
 
 func (m *memoryStorage) Get(id string) (string, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	url, ok := m.data[id]
 	if !ok {
