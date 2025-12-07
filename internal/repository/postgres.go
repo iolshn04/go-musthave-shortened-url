@@ -2,7 +2,11 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
@@ -13,29 +17,26 @@ type postgresRepository struct {
 }
 
 func NewPostgresRepository(dsn string) (Repository, error) {
+	if err := runMigrations(dsn); err != nil {
+		return nil, fmt.Errorf("migrations failed: %w", err)
+	}
+
 	db, err := sqlx.Connect("postgres", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to postgres: %w", err)
 	}
 
 	repo := &postgresRepository{db: db}
-
-	if err := repo.ensureTable(context.Background()); err != nil {
-		return nil, err
-	}
-
 	return repo, nil
 }
 
-func (p *postgresRepository) ensureTable(ctx context.Context) error {
-	schema := `
-	  CREATE TABLE IF NOT EXISTS urls (
-		short_url TEXT PRIMARY KEY,
-		original_url TEXT NOT NULL
-	  );`
-	_, err := p.db.ExecContext(ctx, schema)
+func runMigrations(dsn string) error {
+	m, err := migrate.New("file://migrations", dsn)
 	if err != nil {
-		return fmt.Errorf("failed to create table urls: %w", err)
+		return fmt.Errorf("migrate.New: %w", err)
+	}
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("migrate up: %w", err)
 	}
 	return nil
 }
