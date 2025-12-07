@@ -1,22 +1,29 @@
 package repository
 
 import (
+	"fmt"
 	"go.uber.org/zap"
 )
 
-func NewRepositoryFromConfig(filePath string, log *zap.Logger) Repository {
+func NewRepositoryFromConfig(dsn, filePath string, log *zap.Logger) (Repository, error) {
+	if dsn != "" {
+		db, err := NewPostgresRepository(dsn)
+		if err != nil {
+			return nil, fmt.Errorf("failed to init database %s: %w", filePath, err)
+		}
+		log.Info("using database storage", zap.String("dsn", dsn))
+		return db, nil
+	}
+
 	if filePath != "" {
 		fs, err := NewFileStorage(filePath)
 		if err != nil {
-			log.Warn("failed to init file storage, fallback to memory",
-				zap.String("path", filePath),
-				zap.Error(err),
-			)
-			return NewMemoryStorage()
+			return nil, fmt.Errorf("failed to init file storage %s: %w", filePath, err)
 		}
 		log.Info("using file storage", zap.String("path", filePath))
-		return fs
+		return fs, nil
 	}
+
 	log.Info("using memory storage")
-	return NewMemoryStorage()
+	return NewMemoryStorage(), nil
 }

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -12,7 +13,7 @@ type mockRepo struct {
 	saveErr error
 }
 
-func (m *mockRepo) Save(id, original string) error {
+func (m *mockRepo) Save(ctx context.Context, id, original string) error {
 	if m.saveErr != nil {
 		return m.saveErr
 	}
@@ -20,7 +21,7 @@ func (m *mockRepo) Save(id, original string) error {
 	return nil
 }
 
-func (m *mockRepo) Get(id string) (string, error) {
+func (m *mockRepo) Get(ctx context.Context, id string) (string, error) {
 	url, ok := m.data[id]
 	if !ok {
 		return "", repository.ErrNotFound
@@ -28,16 +29,20 @@ func (m *mockRepo) Get(id string) (string, error) {
 	return url, nil
 }
 
+func (m *mockRepo) Ping(ctx context.Context) error {
+	return nil
+}
+
 func TestShortenerService_ShortenAndGet(t *testing.T) {
 	repo := &mockRepo{data: make(map[string]string)}
 	s := NewShortenerService(repo)
 
-	id, err := s.Shorten("https://yandex.ru")
+	id, err := s.Shorten(context.Background(), "https://yandex.ru")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	got, err := s.GetOriginal(id)
+	got, err := s.GetOriginal(context.Background(), id)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -50,7 +55,7 @@ func TestShortenerService_SaveError(t *testing.T) {
 	repo := &mockRepo{data: make(map[string]string), saveErr: errors.New("boom")}
 	s := NewShortenerService(repo)
 
-	_, err := s.Shorten("https://yandex.ru")
+	_, err := s.Shorten(context.Background(), "https://yandex.ru")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

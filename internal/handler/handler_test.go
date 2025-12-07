@@ -52,7 +52,7 @@ func TestRedirectHandler(t *testing.T) {
 	repo := repository.NewMemoryStorage()
 	s := service.NewShortenerService(repo)
 
-	id, _ := s.Shorten("https://yandex.ru")
+	id, _ := s.Shorten(context.Background(), "https://yandex.ru")
 
 	t.Run("redirect existing", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/"+id, nil)
@@ -140,4 +140,18 @@ func TestJSONShortenHandler(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPingHandler(t *testing.T) {
+	repo := repository.NewMemoryStorage()
+
+	req := httptest.NewRequest("GET", "/ping", nil)
+	w := httptest.NewRecorder()
+
+	PingHandler(w, req, repo)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }

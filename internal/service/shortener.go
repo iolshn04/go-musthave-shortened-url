@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"strings"
@@ -16,16 +17,16 @@ func NewShortenerService(repo repository.Repository) *ShortenerService {
 	return &ShortenerService{repo: repo}
 }
 
-func (s *ShortenerService) Shorten(original string) (string, error) {
+func (s *ShortenerService) Shorten(ctx context.Context, original string) (string, error) {
 	id := generateID()
-	if err := s.repo.Save(id, original); err != nil {
+	if err := s.repo.Save(ctx, id, original); err != nil {
 		return "", err
 	}
 	return id, nil
 }
 
-func (s *ShortenerService) GetOriginal(id string) (string, error) {
-	return s.repo.Get(id)
+func (s *ShortenerService) GetOriginal(ctx context.Context, id string) (string, error) {
+	return s.repo.Get(ctx, id)
 }
 
 func generateID() string {

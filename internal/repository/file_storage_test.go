@@ -1,6 +1,7 @@
 package repository_test
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -17,12 +18,12 @@ func TestFileStorage_SaveAndGet(t *testing.T) {
 		t.Fatalf("ошибка создания хранилища: %v", err)
 	}
 
-	err = fs.Save("abc123", "https://example.com")
+	err = fs.Save(context.Background(), "abc123", "https://example.com")
 	if err != nil {
 		t.Fatalf("ошибка сохранения: %v", err)
 	}
 
-	url, err := fs.Get("abc123")
+	url, err := fs.Get(context.Background(), "abc123")
 	if err != nil {
 		t.Fatalf("ошибка получения: %v", err)
 	}
@@ -39,7 +40,7 @@ func TestFileStorage_GetNotFound(t *testing.T) {
 
 	fs, _ := repository.NewFileStorage(file)
 
-	_, err := fs.Get("unknown")
+	_, err := fs.Get(context.Background(), "unknown")
 	if err == nil {
 		t.Errorf("ожидалась ошибка ErrNotFound")
 	}
@@ -55,20 +56,20 @@ func TestFileStorage_PersistLoad(t *testing.T) {
 		t.Fatalf("ошибка создания: %v", err)
 	}
 
-	fs.Save("a1", "https://google.com")
-	fs.Save("b2", "https://yandex.ru")
+	fs.Save(context.Background(), "a1", "https://google.com")
+	fs.Save(context.Background(), "b2", "https://yandex.ru")
 
 	fs2, err := repository.NewFileStorage(file)
 	if err != nil {
 		t.Fatalf("ошибка загрузки: %v", err)
 	}
 
-	url1, err1 := fs2.Get("a1")
+	url1, err1 := fs2.Get(context.Background(), "a1")
 	if err1 != nil || url1 != "https://google.com" {
 		t.Errorf("неверное значение после загрузки: %v", url1)
 	}
 
-	url2, err2 := fs2.Get("b2")
+	url2, err2 := fs2.Get(context.Background(), "b2")
 	if err2 != nil || url2 != "https://yandex.ru" {
 		t.Errorf("неверное значение после загрузки: %v", url2)
 	}
