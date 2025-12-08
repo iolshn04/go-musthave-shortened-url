@@ -44,6 +44,22 @@ func (m *memoryStorage) Get(ctx context.Context, id string) (string, error) {
 	return url, nil
 }
 
+func (m *memoryStorage) SaveBatch(ctx context.Context, data map[string]string) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for k, v := range data {
+		m.data[k] = v
+	}
+	return nil
+}
+
 func (m *memoryStorage) Ping(ctx context.Context) error {
 	return nil
 }

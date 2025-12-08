@@ -95,6 +95,52 @@ func PingHandler(w http.ResponseWriter, r *http.Request, repo repository.Reposit
 	w.WriteHeader(http.StatusOK)
 }
 
+func BatchShortenHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+	s *service.ShortenerService,
+	baseURL string,
+	log *zap.Logger,
+) {
+	var req []model.BatchRequestItem
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	if len(req) == 0 {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	input := make(map[string]string, len(req))
+	for _, item := range req {
+		input[item.CorrelationID] = item.OriginalURL
+	}
+
+	result, err := s.ShortenBatch(r.Context(), input)
+	if err != nil {
+		log.Error("batch failed", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	resp := make([]model.BatchResponseItem, 0, len(req))
+	for _, item := range req {
+		id := result[item.CorrelationID]
+		full, _ := url.JoinPath(baseURL, id)
+		resp = append(resp, model.BatchResponseItem{
+			CorrelationID: item.CorrelationID,
+			ShortURL:      full,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
 func NewRouter(s *service.ShortenerService, baseURL string, log *zap.Logger, repo repository.Repository) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler { return logger.RequestLogger(log, next) })
@@ -111,6 +157,9 @@ func NewRouter(s *service.ShortenerService, baseURL string, log *zap.Logger, rep
 	})
 	r.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
 		PingHandler(w, r, repo)
+	})
+	r.Post("/api/shorten/batch", func(w http.ResponseWriter, r *http.Request) {
+		BatchShortenHandler(w, r, s, baseURL, log)
 	})
 	return r
 }

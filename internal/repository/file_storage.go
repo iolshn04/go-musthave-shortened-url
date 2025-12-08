@@ -100,3 +100,21 @@ func (f *fileStorage) persist() error {
 	enc.SetIndent("", "  ")
 	return enc.Encode(entries)
 }
+
+func (f *fileStorage) SaveBatch(ctx context.Context, data map[string]string) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	for k, v := range data {
+		if err := f.mem.Save(ctx, k, v); err != nil {
+			return err
+		}
+	}
+	return f.persist()
+}

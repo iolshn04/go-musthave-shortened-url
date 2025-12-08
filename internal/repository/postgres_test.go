@@ -44,6 +44,23 @@ func (m *mockPostgresRepo) Get(ctx context.Context, id string) (string, error) {
 	return v, nil
 }
 
+func (m *mockPostgresRepo) SaveBatch(ctx context.Context, data map[string]string) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	if m.saveErr != nil {
+		return m.saveErr
+	}
+
+	for k, v := range data {
+		m.data[k] = v
+	}
+	return nil
+}
+
 func (m *mockPostgresRepo) Ping(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
@@ -96,6 +113,38 @@ func TestPostgresRepository_Ping(t *testing.T) {
 	assert.EqualError(t, err, "ping fail")
 }
 
+func TestPostgresRepository_SaveBatch(t *testing.T) {
+	repo := &mockPostgresRepo{data: make(map[string]string)}
+	ctx := context.Background()
+
+	data := map[string]string{
+		"id1": "https://google.com",
+		"id2": "https://yandex.ru",
+	}
+
+	err := repo.SaveBatch(ctx, data)
+	assert.NoError(t, err)
+
+	for id, expected := range data {
+		got, err := repo.Get(ctx, id)
+		assert.NoError(t, err)
+		assert.Equal(t, expected, got)
+	}
+}
+
+func TestPostgresRepository_SaveBatch_Error(t *testing.T) {
+	repo := &mockPostgresRepo{
+		data:    make(map[string]string),
+		saveErr: errors.New("batch fail"),
+	}
+	ctx := context.Background()
+
+	err := repo.SaveBatch(ctx, map[string]string{
+		"id1": "https://yandex.ru",
+	})
+	assert.EqualError(t, err, "batch fail")
+}
+
 func TestPostgresRepository_ContextCancelled(t *testing.T) {
 	repo := &mockPostgresRepo{data: make(map[string]string)}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -108,5 +157,10 @@ func TestPostgresRepository_ContextCancelled(t *testing.T) {
 	assert.Equal(t, context.Canceled, err)
 
 	err = repo.Ping(ctx)
+	assert.Equal(t, context.Canceled, err)
+
+	err = repo.SaveBatch(ctx, map[string]string{
+		"id1": "https://example.com",
+	})
 	assert.Equal(t, context.Canceled, err)
 }

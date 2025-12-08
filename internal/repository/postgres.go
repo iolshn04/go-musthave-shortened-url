@@ -64,3 +64,30 @@ func (p *postgresRepository) Get(ctx context.Context, id string) (string, error)
 func (p *postgresRepository) Ping(ctx context.Context) error {
 	return p.db.PingContext(ctx)
 }
+
+func (p *postgresRepository) SaveBatch(ctx context.Context, data map[string]string) error {
+	tx, err := p.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	stmt, err := tx.PrepareContext(ctx, `
+        INSERT INTO urls (short_url, original_url)
+        VALUES ($1, $2)
+        ON CONFLICT (short_url) DO NOTHING
+    `)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	defer stmt.Close()
+
+	for k, v := range data {
+		if _, err := stmt.ExecContext(ctx, k, v); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+
+	return tx.Commit()
+}

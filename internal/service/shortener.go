@@ -35,3 +35,24 @@ func generateID() string {
 	id := base64.URLEncoding.EncodeToString(b)
 	return strings.TrimRight(id, "=")
 }
+
+func (s *ShortenerService) ShortenBatch(
+	ctx context.Context,
+	input map[string]string,
+) (map[string]string, error) {
+
+	result := make(map[string]string, len(input))
+	toSave := make(map[string]string, len(input))
+
+	for cid, original := range input {
+		id := generateID()
+		result[cid] = id
+		toSave[id] = original
+	}
+
+	if err := s.repo.SaveBatch(ctx, toSave); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}

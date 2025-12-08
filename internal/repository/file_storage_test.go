@@ -74,3 +74,62 @@ func TestFileStorage_PersistLoad(t *testing.T) {
 		t.Errorf("неверное значение после загрузки: %v", url2)
 	}
 }
+
+func TestFileStorage_SaveBatchAndGet(t *testing.T) {
+	file := "test_data.json"
+	_ = os.Remove(file)
+	defer os.Remove(file)
+
+	fs, err := repository.NewFileStorage(file)
+	if err != nil {
+		t.Fatalf("ошибка создания хранилища: %v", err)
+	}
+
+	data := map[string]string{
+		"id1": "https://google.com",
+		"id2": "https://yandex.ru",
+	}
+
+	err = fs.SaveBatch(context.Background(), data)
+	if err != nil {
+		t.Fatalf("ошибка пакетного сохранения: %v", err)
+	}
+
+	url1, err := fs.Get(context.Background(), "id1")
+	if err != nil || url1 != "https://google.com" {
+		t.Errorf("ожидалось https://google.com, получено %s, err=%v", url1, err)
+	}
+
+	url2, err := fs.Get(context.Background(), "id2")
+	if err != nil || url2 != "https://yandex.ru" {
+		t.Errorf("ожидалось https://yandex.ru, получено %s, err=%v", url2, err)
+	}
+}
+
+func TestFileStorage_ContextCancelled(t *testing.T) {
+	file := "test_data.json"
+	_ = os.Remove(file)
+	defer os.Remove(file)
+
+	fs, _ := repository.NewFileStorage(file)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := fs.Save(ctx, "id", "url")
+	if err != context.Canceled {
+		t.Errorf("ожидался context.Canceled, получено %v", err)
+	}
+
+	err = fs.SaveBatch(ctx, map[string]string{
+		"id1": "url1",
+	})
+	if err != context.Canceled {
+		t.Errorf("ожидался context.Canceled, получено %v", err)
+	}
+
+	_, err = fs.Get(ctx, "id")
+	if err != context.Canceled {
+		t.Errorf("ожидался context.Canceled, получено %v", err)
+	}
+}
