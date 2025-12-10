@@ -59,7 +59,6 @@ func TestJSONShortenHandler_Gzip(t *testing.T) {
 		bodyBytes, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 
-		// Распакуем, если ответ сжат
 		if resp.Header.Get("Content-Encoding") == "gzip" {
 			zr, err := gzip.NewReader(bytes.NewReader(bodyBytes))
 			require.NoError(t, err)

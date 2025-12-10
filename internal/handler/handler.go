@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"github.com/iolshn04/go-musthave-shortened-url/internal/logger"
 	"github.com/iolshn04/go-musthave-shortened-url/internal/middlewares"
 	"go.uber.org/zap"
@@ -24,7 +25,16 @@ func CreateHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerS
 
 	id, err := s.Shorten(r.Context(), string(body))
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusInternalServerError)
+		var eErr repository.ErrAlreadyExistsWithID
+		if errors.As(err, &eErr) {
+			fullURL, _ := url.JoinPath(baseURL, eErr.ExistingID)
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte(fullURL))
+			return
+		}
+
+		log.Error("failed to shorten URL", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
@@ -36,7 +46,7 @@ func CreateHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerS
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(fullURL))
+	_, _ = w.Write([]byte(fullURL))
 }
 
 func RedirectHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerService) {
@@ -68,8 +78,16 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request, s *service.Short
 
 	id, err := s.Shorten(r.Context(), req.URL)
 	if err != nil {
-		log.Error("failed to shorten URL", zap.String("url", req.URL), zap.Error(err))
+		var eErr repository.ErrAlreadyExistsWithID
+		if errors.As(err, &eErr) {
+			fullURL, _ := url.JoinPath(baseURL, eErr.ExistingID)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(w).Encode(model.ShortenResponse{Result: fullURL})
+			return
+		}
 
+		log.Error("failed to shorten URL", zap.String("url", req.URL), zap.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}

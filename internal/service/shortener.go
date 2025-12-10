@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"strings"
 
 	"github.com/iolshn04/go-musthave-shortened-url/internal/repository"
@@ -19,7 +20,12 @@ func NewShortenerService(repo repository.Repository) *ShortenerService {
 
 func (s *ShortenerService) Shorten(ctx context.Context, original string) (string, error) {
 	id := generateID()
-	if err := s.repo.Save(ctx, id, original); err != nil {
+	err := s.repo.Save(ctx, id, original)
+	if err != nil {
+		var existErr repository.ErrAlreadyExistsWithID
+		if errors.As(err, &existErr) {
+			return "", existErr
+		}
 		return "", err
 	}
 	return id, nil

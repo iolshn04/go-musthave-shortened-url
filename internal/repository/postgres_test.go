@@ -164,3 +164,19 @@ func TestPostgresRepository_ContextCancelled(t *testing.T) {
 	})
 	assert.Equal(t, context.Canceled, err)
 }
+
+func TestPostgresRepository_SaveAlreadyExists(t *testing.T) {
+	repo := &mockPostgresRepo{
+		data: map[string]string{"existingID": "https://example.com"},
+	}
+	ctx := context.Background()
+
+	repo.saveErr = ErrAlreadyExistsWithID{ExistingID: "existingID"}
+
+	err := repo.Save(ctx, "newID", "https://example.com")
+
+	var alreadyExistsErr ErrAlreadyExistsWithID
+	ok := errors.As(err, &alreadyExistsErr)
+	assert.True(t, ok, "expected ErrAlreadyExistsWithID")
+	assert.Equal(t, "existingID", alreadyExistsErr.ExistingID)
+}

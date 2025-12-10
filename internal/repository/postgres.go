@@ -7,9 +7,10 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/jackc/pgerrcode"
+	"github.com/lib/pq"
 
 	"github.com/jmoiron/sqlx"
-	_ "github.com/lib/pq"
 )
 
 type postgresRepository struct {
@@ -43,11 +44,21 @@ func runMigrations(dsn string) error {
 
 func (p *postgresRepository) Save(ctx context.Context, id, original string) error {
 	_, err := p.db.ExecContext(ctx,
-		`INSERT INTO urls (short_url, original_url) VALUES ($1, $2)
-    ON CONFLICT (short_url) DO NOTHING`,
+		`INSERT INTO urls (short_url, original_url)
+         VALUES ($1, $2)`,
 		id, original)
 	if err != nil {
-		return fmt.Errorf("failed to save url %s: %w", id, err)
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == pgerrcode.UniqueViolation {
+			var existingID string
+			getErr := p.db.GetContext(ctx, &existingID,
+				`SELECT short_url FROM urls WHERE original_url=$1`, original)
+			if getErr != nil {
+				return fmt.Errorf("failed to get existing url after unique violation: %w", getErr)
+			}
+			return ErrAlreadyExistsWithID{ExistingID: existingID}
+		}
+		return fmt.Errorf("failed to save url: %w", err)
 	}
 	return nil
 }
