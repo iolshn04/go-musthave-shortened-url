@@ -1,6 +1,9 @@
 package repository
 
-import "sync"
+import (
+	"context"
+	"sync"
+)
 
 type memoryStorage struct {
 	data map[string]string
@@ -11,14 +14,26 @@ func NewMemoryStorage() Repository {
 	return &memoryStorage{data: make(map[string]string)}
 }
 
-func (m *memoryStorage) Save(id, original string) error {
+func (m *memoryStorage) Save(ctx context.Context, id, original string) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.data[id] = original
 	return nil
 }
 
-func (m *memoryStorage) Get(id string) (string, error) {
+func (m *memoryStorage) Get(ctx context.Context, id string) (string, error) {
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	default:
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -27,4 +42,24 @@ func (m *memoryStorage) Get(id string) (string, error) {
 		return "", ErrNotFound
 	}
 	return url, nil
+}
+
+func (m *memoryStorage) SaveBatch(ctx context.Context, data map[string]string) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for k, v := range data {
+		m.data[k] = v
+	}
+	return nil
+}
+
+func (m *memoryStorage) Ping(ctx context.Context) error {
+	return nil
 }

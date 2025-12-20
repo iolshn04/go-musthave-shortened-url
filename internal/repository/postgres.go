@@ -1,0 +1,104 @@
+package repository
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/jackc/pgerrcode"
+	"github.com/lib/pq"
+
+	"github.com/jmoiron/sqlx"
+)
+
+type postgresRepository struct {
+	db *sqlx.DB
+}
+
+func NewPostgresRepository(dsn string) (Repository, error) {
+	if err := runMigrations(dsn); err != nil {
+		return nil, fmt.Errorf("migrations failed: %w", err)
+	}
+
+	db, err := sqlx.Connect("postgres", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to postgres: %w", err)
+	}
+
+	repo := &postgresRepository{db: db}
+	return repo, nil
+}
+
+func runMigrations(dsn string) error {
+	m, err := migrate.New("file://migrations", dsn)
+	if err != nil {
+		return fmt.Errorf("migrate.New: %w", err)
+	}
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("migrate up: %w", err)
+	}
+	return nil
+}
+
+func (p *postgresRepository) Save(ctx context.Context, id, original string) error {
+	_, err := p.db.ExecContext(ctx,
+		`INSERT INTO urls (short_url, original_url)
+         VALUES ($1, $2)`,
+		id, original)
+	if err != nil {
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == pgerrcode.UniqueViolation {
+			var existingID string
+			getErr := p.db.GetContext(ctx, &existingID,
+				`SELECT short_url FROM urls WHERE original_url=$1`, original)
+			if getErr != nil {
+				return fmt.Errorf("failed to get existing url after unique violation: %w", getErr)
+			}
+			return ErrAlreadyExistsWithID{ExistingID: existingID}
+		}
+		return fmt.Errorf("failed to save url: %w", err)
+	}
+	return nil
+}
+
+func (p *postgresRepository) Get(ctx context.Context, id string) (string, error) {
+	var original string
+	err := p.db.GetContext(ctx, &original, `SELECT original_url FROM urls WHERE short_url=$1`, id)
+	if err != nil {
+		return "", ErrNotFound
+	}
+	return original, nil
+}
+
+func (p *postgresRepository) Ping(ctx context.Context) error {
+	return p.db.PingContext(ctx)
+}
+
+func (p *postgresRepository) SaveBatch(ctx context.Context, data map[string]string) error {
+	tx, err := p.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	stmt, err := tx.PrepareContext(ctx, `
+        INSERT INTO urls (short_url, original_url)
+        VALUES ($1, $2)
+        ON CONFLICT (short_url) DO NOTHING
+    `)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	defer stmt.Close()
+
+	for k, v := range data {
+		if _, err := stmt.ExecContext(ctx, k, v); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+
+	return tx.Commit()
+}

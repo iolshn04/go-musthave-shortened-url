@@ -5,14 +5,14 @@ import (
 	"os"
 )
 
-type Config struct {
+type AppConfig struct {
 	ServerAddress   string
 	BaseURL         string
 	LogLevel        string
 	FileStoragePath string
 }
 
-func NewConfig() *Config {
+func NewAppConfig() *AppConfig {
 	const (
 		defaultServerAddress   = "localhost:8080"
 		defaultBaseURL         = "http://localhost:8080"
@@ -27,7 +27,7 @@ func NewConfig() *Config {
 	flagFileStoragePath := fs.String("f", "", "file storage path")
 	_ = fs.Parse(os.Args[1:])
 
-	cfg := &Config{}
+	cfg := &AppConfig{}
 
 	if val, ok := os.LookupEnv("SERVER_ADDRESS"); ok {
 		cfg.ServerAddress = val

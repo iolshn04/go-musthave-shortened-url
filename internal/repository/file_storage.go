@@ -1,7 +1,9 @@
 package repository
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"sync"
 )
@@ -26,36 +28,52 @@ func NewFileStorage(path string) (Repository, error) {
 	if _, err := os.Stat(path); err == nil {
 		f, err := os.Open(path)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to open file %s: %w", path, err)
 		}
 		defer f.Close()
 
 		var entries []fileEntry
 		if err := json.NewDecoder(f).Decode(&entries); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to decode file %s: %w", path, err)
 		}
 
 		for _, e := range entries {
-			fs.mem.Save(e.ShortURL, e.Original)
+			fs.mem.Save(context.Background(), e.ShortURL, e.Original)
 		}
 	}
 
 	return fs, nil
 }
 
-func (f *fileStorage) Save(shortURL, original string) error {
+func (f *fileStorage) Save(ctx context.Context, shortURL, original string) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	if err := f.mem.Save(shortURL, original); err != nil {
+	if err := f.mem.Save(ctx, shortURL, original); err != nil {
 		return err
 	}
 
 	return f.persist()
 }
 
-func (f *fileStorage) Get(shortURL string) (string, error) {
-	return f.mem.Get(shortURL)
+func (f *fileStorage) Get(ctx context.Context, shortURL string) (string, error) {
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	default:
+	}
+
+	return f.mem.Get(ctx, shortURL)
+}
+
+func (f *fileStorage) Ping(ctx context.Context) error {
+	return nil
 }
 
 func (f *fileStorage) persist() error {
@@ -74,11 +92,29 @@ func (f *fileStorage) persist() error {
 
 	fh, err := os.Create(f.path)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create file %s: %w", f.path, err)
 	}
 	defer fh.Close()
 
 	enc := json.NewEncoder(fh)
 	enc.SetIndent("", "  ")
 	return enc.Encode(entries)
+}
+
+func (f *fileStorage) SaveBatch(ctx context.Context, data map[string]string) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	for k, v := range data {
+		if err := f.mem.Save(ctx, k, v); err != nil {
+			return err
+		}
+	}
+	return f.persist()
 }

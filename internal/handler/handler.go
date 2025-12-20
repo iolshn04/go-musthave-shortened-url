@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"github.com/iolshn04/go-musthave-shortened-url/internal/logger"
 	"github.com/iolshn04/go-musthave-shortened-url/internal/middlewares"
 	"go.uber.org/zap"
@@ -22,9 +23,18 @@ func CreateHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerS
 		return
 	}
 
-	id, err := s.Shorten(string(body))
+	id, err := s.Shorten(r.Context(), string(body))
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusInternalServerError)
+		var eErr repository.ErrAlreadyExistsWithID
+		if errors.As(err, &eErr) {
+			fullURL, _ := url.JoinPath(baseURL, eErr.ExistingID)
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte(fullURL))
+			return
+		}
+
+		log.Error("failed to shorten URL", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
@@ -36,7 +46,7 @@ func CreateHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerS
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(fullURL))
+	_, _ = w.Write([]byte(fullURL))
 }
 
 func RedirectHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerService) {
@@ -46,7 +56,7 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request, s *service.Shortene
 		return
 	}
 
-	original, err := s.GetOriginal(id)
+	original, err := s.GetOriginal(r.Context(), id)
 	if err == repository.ErrNotFound {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusNotFound)
 		return
@@ -66,10 +76,18 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request, s *service.Short
 		return
 	}
 
-	id, err := s.Shorten(req.URL)
+	id, err := s.Shorten(r.Context(), req.URL)
 	if err != nil {
-		log.Error("failed to shorten URL", zap.String("url", req.URL), zap.Error(err))
+		var eErr repository.ErrAlreadyExistsWithID
+		if errors.As(err, &eErr) {
+			fullURL, _ := url.JoinPath(baseURL, eErr.ExistingID)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(w).Encode(model.ShortenResponse{Result: fullURL})
+			return
+		}
 
+		log.Error("failed to shorten URL", zap.String("url", req.URL), zap.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
@@ -87,7 +105,61 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request, s *service.Short
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-func NewRouter(s *service.ShortenerService, baseURL string, log *zap.Logger) *chi.Mux {
+func PingHandler(w http.ResponseWriter, r *http.Request, repo repository.Repository) {
+	if err := repo.Ping(r.Context()); err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func BatchShortenHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+	s *service.ShortenerService,
+	baseURL string,
+	log *zap.Logger,
+) {
+	var req []model.BatchRequestItem
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	if len(req) == 0 {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	input := make(map[string]string, len(req))
+	for _, item := range req {
+		input[item.CorrelationID] = item.OriginalURL
+	}
+
+	result, err := s.ShortenBatch(r.Context(), input)
+	if err != nil {
+		log.Error("batch failed", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	resp := make([]model.BatchResponseItem, 0, len(req))
+	for _, item := range req {
+		id := result[item.CorrelationID]
+		full, _ := url.JoinPath(baseURL, id)
+		resp = append(resp, model.BatchResponseItem{
+			CorrelationID: item.CorrelationID,
+			ShortURL:      full,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func NewRouter(s *service.ShortenerService, baseURL string, log *zap.Logger, repo repository.Repository) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler { return logger.RequestLogger(log, next) })
 	r.Use(middlewares.GzipRequestMiddleware)
@@ -100,6 +172,12 @@ func NewRouter(s *service.ShortenerService, baseURL string, log *zap.Logger) *ch
 	})
 	r.Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
 		RedirectHandler(w, r, s)
+	})
+	r.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
+		PingHandler(w, r, repo)
+	})
+	r.Post("/api/shorten/batch", func(w http.ResponseWriter, r *http.Request) {
+		BatchShortenHandler(w, r, s, baseURL, log)
 	})
 	return r
 }

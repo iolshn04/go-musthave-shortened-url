@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"go.uber.org/zap"
@@ -52,7 +53,7 @@ func TestRedirectHandler(t *testing.T) {
 	repo := repository.NewMemoryStorage()
 	s := service.NewShortenerService(repo)
 
-	id, _ := s.Shorten("https://yandex.ru")
+	id, _ := s.Shorten(context.Background(), "https://yandex.ru")
 
 	t.Run("redirect existing", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/"+id, nil)
@@ -139,5 +140,52 @@ func TestJSONShortenHandler(t *testing.T) {
 				assert.True(t, strings.HasPrefix(respBody.Result, tt.wantPrefix))
 			}
 		})
+	}
+}
+
+func TestPingHandler(t *testing.T) {
+	repo := repository.NewMemoryStorage()
+
+	req := httptest.NewRequest("GET", "/ping", nil)
+	w := httptest.NewRecorder()
+
+	PingHandler(w, req, repo)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestBatchShortenHandler(t *testing.T) {
+	repo := repository.NewMemoryStorage()
+	s := service.NewShortenerService(repo)
+	baseURL := "http://localhost:8080"
+	log := zap.NewNop()
+
+	batchReq := []map[string]string{
+		{"correlation_id": "cid1", "original_url": "https://google.com"},
+		{"correlation_id": "cid2", "original_url": "https://yandex.ru"},
+	}
+
+	body, _ := json.Marshal(batchReq)
+	req := httptest.NewRequest("POST", "/api/shorten/batch", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	BatchShortenHandler(w, req, s, baseURL, log)
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	var respBody []struct {
+		CorrelationID string `json:"correlation_id"`
+		ShortURL      string `json:"short_url"`
+	}
+	err := json.NewDecoder(resp.Body).Decode(&respBody)
+	assert.NoError(t, err)
+	assert.Len(t, respBody, 2)
+	for _, item := range respBody {
+		assert.True(t, item.ShortURL != "")
 	}
 }

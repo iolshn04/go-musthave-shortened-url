@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/iolshn04/go-musthave-shortened-url/internal/config"
+	db "github.com/iolshn04/go-musthave-shortened-url/internal/config/db"
 	"github.com/iolshn04/go-musthave-shortened-url/internal/handler"
 	"github.com/iolshn04/go-musthave-shortened-url/internal/logger"
 	"github.com/iolshn04/go-musthave-shortened-url/internal/repository"
@@ -14,19 +15,23 @@ import (
 )
 
 func main() {
-	cfg := config.NewConfig()
+	appCfg := config.NewAppConfig()
+	dbCfg := db.NewDBConfig()
 
-	log, err := logger.Initialize(cfg.LogLevel)
+	log, err := logger.Initialize(appCfg.LogLevel)
 	if err != nil {
 		fmt.Printf("failed to initialize logger: %v\n", err)
 		os.Exit(1)
 	}
-	repo := repository.NewRepositoryFromConfig(cfg.FileStoragePath, log)
+	repo, err := repository.NewRepositoryFromConfig(dbCfg.DSN, appCfg.FileStoragePath, log)
+	if err != nil {
+		log.Fatal("failed to initialize repository", zap.Error(err))
+	}
 	shortener := service.NewShortenerService(repo)
-	router := handler.NewRouter(shortener, cfg.BaseURL, log)
+	router := handler.NewRouter(shortener, appCfg.BaseURL, log, repo)
 
-	log.Info("HTTP server listening", zap.String("address", cfg.ServerAddress))
-	if err := http.ListenAndServe(cfg.ServerAddress, router); err != nil {
+	log.Info("HTTP server listening", zap.String("address", appCfg.ServerAddress))
+	if err := http.ListenAndServe(appCfg.ServerAddress, router); err != nil {
 		log.Fatal("server stopped with error", zap.Error(err))
 	}
 }
