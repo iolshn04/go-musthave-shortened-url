@@ -2,19 +2,24 @@ package repository
 
 import (
 	"context"
+	"github.com/iolshn04/go-musthave-shortened-url/internal/model"
 	"sync"
 )
 
+type memoryRecord struct {
+	UserID      string
+	OriginalURL string
+}
 type memoryStorage struct {
-	data map[string]string
+	data map[string]memoryRecord
 	mu   sync.Mutex
 }
 
 func NewMemoryStorage() Repository {
-	return &memoryStorage{data: make(map[string]string)}
+	return &memoryStorage{data: make(map[string]memoryRecord)}
 }
 
-func (m *memoryStorage) Save(ctx context.Context, id, original string) error {
+func (m *memoryStorage) Save(ctx context.Context, userID, shortID, original string) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -23,11 +28,27 @@ func (m *memoryStorage) Save(ctx context.Context, id, original string) error {
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.data[id] = original
+	m.data[shortID] = memoryRecord{UserID: userID, OriginalURL: original}
 	return nil
 }
 
-func (m *memoryStorage) Get(ctx context.Context, id string) (string, error) {
+func (m *memoryStorage) SaveBatch(ctx context.Context, userID string, data map[string]string) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for short, original := range data {
+		m.data[short] = memoryRecord{UserID: userID, OriginalURL: original}
+	}
+	return nil
+}
+
+func (m *memoryStorage) Get(ctx context.Context, shortID string) (string, error) {
 	select {
 	case <-ctx.Done():
 		return "", ctx.Err()
@@ -37,27 +58,38 @@ func (m *memoryStorage) Get(ctx context.Context, id string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	url, ok := m.data[id]
+	url, ok := m.data[shortID]
 	if !ok {
 		return "", ErrNotFound
 	}
-	return url, nil
+	return url.OriginalURL, nil
 }
 
-func (m *memoryStorage) SaveBatch(ctx context.Context, data map[string]string) error {
+func (m *memoryStorage) GetByUser(
+	ctx context.Context,
+	userID string,
+) ([]model.UserURL, error) {
+
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return nil, ctx.Err()
 	default:
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	for k, v := range data {
-		m.data[k] = v
+	result := make([]model.UserURL, 0)
+	for short, record := range m.data {
+		if record.UserID == userID {
+			result = append(result, model.UserURL{
+				ShortURL:    short,
+				OriginalURL: record.OriginalURL,
+			})
+		}
 	}
-	return nil
+
+	return result, nil
 }
 
 func (m *memoryStorage) Ping(ctx context.Context) error {

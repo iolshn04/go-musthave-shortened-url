@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/iolshn04/go-musthave-shortened-url/internal/model"
 	"os"
 	"sync"
 )
@@ -15,6 +16,7 @@ type fileStorage struct {
 }
 
 type fileEntry struct {
+	UserID   string `json:"user_id"`
 	ShortURL string `json:"short_url"`
 	Original string `json:"original_url"`
 }
@@ -38,14 +40,14 @@ func NewFileStorage(path string) (Repository, error) {
 		}
 
 		for _, e := range entries {
-			fs.mem.Save(context.Background(), e.ShortURL, e.Original)
+			fs.mem.Save(context.Background(), e.UserID, e.ShortURL, e.Original)
 		}
 	}
 
 	return fs, nil
 }
 
-func (f *fileStorage) Save(ctx context.Context, shortURL, original string) error {
+func (f *fileStorage) Save(ctx context.Context, userID, shortURL, original string) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -55,21 +57,31 @@ func (f *fileStorage) Save(ctx context.Context, shortURL, original string) error
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	if err := f.mem.Save(ctx, shortURL, original); err != nil {
+	if err := f.mem.Save(ctx, userID, shortURL, original); err != nil {
 		return err
 	}
 
 	return f.persist()
 }
 
-func (f *fileStorage) Get(ctx context.Context, shortURL string) (string, error) {
+func (f *fileStorage) Get(ctx context.Context, shortID string) (string, error) {
 	select {
 	case <-ctx.Done():
 		return "", ctx.Err()
 	default:
 	}
 
-	return f.mem.Get(ctx, shortURL)
+	return f.mem.Get(ctx, shortID)
+}
+
+func (f *fileStorage) GetByUser(ctx context.Context, userID string) ([]model.UserURL, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	return f.mem.GetByUser(ctx, userID)
 }
 
 func (f *fileStorage) Ping(ctx context.Context) error {
@@ -83,10 +95,11 @@ func (f *fileStorage) persist() error {
 	}
 
 	entries := make([]fileEntry, 0, len(memData.data))
-	for k, v := range memData.data {
+	for short, rec := range memData.data {
 		entries = append(entries, fileEntry{
-			ShortURL: k,
-			Original: v,
+			UserID:   rec.UserID,
+			ShortURL: short,
+			Original: rec.OriginalURL,
 		})
 	}
 
@@ -101,7 +114,7 @@ func (f *fileStorage) persist() error {
 	return enc.Encode(entries)
 }
 
-func (f *fileStorage) SaveBatch(ctx context.Context, data map[string]string) error {
+func (f *fileStorage) SaveBatch(ctx context.Context, userID string, data map[string]string) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -111,10 +124,8 @@ func (f *fileStorage) SaveBatch(ctx context.Context, data map[string]string) err
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	for k, v := range data {
-		if err := f.mem.Save(ctx, k, v); err != nil {
-			return err
-		}
+	if err := f.mem.SaveBatch(ctx, userID, data); err != nil {
+		return err
 	}
 	return f.persist()
 }

@@ -3,6 +3,7 @@ package middlewares_test
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"go.uber.org/zap"
 	"io"
@@ -28,6 +29,7 @@ func TestJSONShortenHandler_Gzip(t *testing.T) {
 	r := chi.NewRouter()
 	r.Use(middlewares.GzipRequestMiddleware)
 	r.Use(middlewares.GzipMiddleware)
+	r.Use(middlewares.AuthMiddleware)
 	r.Post("/api/shorten", func(w http.ResponseWriter, r *http.Request) {
 		handler.JSONShortenHandler(w, r, s, baseURL, log)
 	})
@@ -50,6 +52,8 @@ func TestJSONShortenHandler_Gzip(t *testing.T) {
 		require.NoError(t, err)
 		req.Header.Set("Content-Encoding", "gzip")
 		req.Header.Set("Content-Type", "application/json")
+
+		req = req.WithContext(context.WithValue(req.Context(), middlewares.UserIDKey, "testuser"))
 
 		client := &http.Client{}
 		resp, err := client.Do(req)
@@ -76,6 +80,8 @@ func TestJSONShortenHandler_Gzip(t *testing.T) {
 		require.NoError(t, err)
 		req.Header.Set("Accept-Encoding", "gzip")
 		req.Header.Set("Content-Type", "application/json")
+
+		req = req.WithContext(context.WithValue(req.Context(), middlewares.UserIDKey, "testuser"))
 
 		client := &http.Client{}
 		resp, err := client.Do(req)

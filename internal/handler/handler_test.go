@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/iolshn04/go-musthave-shortened-url/internal/middlewares"
 	"go.uber.org/zap"
 	"io"
 	"net/http"
@@ -25,6 +26,8 @@ func TestCreateHandler(t *testing.T) {
 
 	t.Run("valid url", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/", strings.NewReader("https://yandex.ru"))
+		ctx := context.WithValue(req.Context(), middlewares.UserIDKey, "test-user")
+		req = req.WithContext(ctx)
 		w := httptest.NewRecorder()
 		CreateHandler(w, req, s, baseURL, log)
 
@@ -39,6 +42,8 @@ func TestCreateHandler(t *testing.T) {
 
 	t.Run("empty body", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/", strings.NewReader(""))
+		ctx := context.WithValue(req.Context(), middlewares.UserIDKey, "test-user")
+		req = req.WithContext(ctx)
 		w := httptest.NewRecorder()
 		CreateHandler(w, req, s, baseURL, log)
 
@@ -52,8 +57,9 @@ func TestCreateHandler(t *testing.T) {
 func TestRedirectHandler(t *testing.T) {
 	repo := repository.NewMemoryStorage()
 	s := service.NewShortenerService(repo)
+	userID := "user123"
 
-	id, _ := s.Shorten(context.Background(), "https://yandex.ru")
+	id, _ := s.Shorten(context.Background(), userID, "https://yandex.ru")
 
 	t.Run("redirect existing", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/"+id, nil)
@@ -122,6 +128,8 @@ func TestJSONShortenHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest("POST", "/api/shorten", strings.NewReader(tt.body))
+			ctx := context.WithValue(req.Context(), middlewares.UserIDKey, "test-user")
+			req = req.WithContext(ctx)
 			w := httptest.NewRecorder()
 
 			JSONShortenHandler(w, req, s, baseURL, log)
@@ -170,8 +178,12 @@ func TestBatchShortenHandler(t *testing.T) {
 
 	body, _ := json.Marshal(batchReq)
 	req := httptest.NewRequest("POST", "/api/shorten/batch", bytes.NewReader(body))
-	w := httptest.NewRecorder()
+	req.Header.Set("Content-Type", "application/json")
 
+	ctx := context.WithValue(req.Context(), middlewares.UserIDKey, "test-user")
+	req = req.WithContext(ctx)
+
+	w := httptest.NewRecorder()
 	BatchShortenHandler(w, req, s, baseURL, log)
 	resp := w.Result()
 	defer resp.Body.Close()
