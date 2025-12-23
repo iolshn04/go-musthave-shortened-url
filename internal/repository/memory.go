@@ -9,6 +9,7 @@ import (
 type memoryRecord struct {
 	UserID      string
 	OriginalURL string
+	Deleted     bool
 }
 type memoryStorage struct {
 	data map[string]memoryRecord
@@ -62,6 +63,9 @@ func (m *memoryStorage) Get(ctx context.Context, shortID string) (string, error)
 	if !ok {
 		return "", ErrNotFound
 	}
+	if url.Deleted {
+		return "", ErrDeleted
+	}
 	return url.OriginalURL, nil
 }
 
@@ -93,5 +97,25 @@ func (m *memoryStorage) GetByUser(
 }
 
 func (m *memoryStorage) Ping(ctx context.Context) error {
+	return nil
+}
+
+func (m *memoryStorage) MarkDeleted(ctx context.Context, userID string, shortIDs []string) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, id := range shortIDs {
+		rec, ok := m.data[id]
+		if ok && rec.UserID == userID {
+			rec.Deleted = true
+			m.data[id] = rec
+		}
+	}
 	return nil
 }

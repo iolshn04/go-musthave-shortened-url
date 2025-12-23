@@ -25,11 +25,12 @@ func TestJSONShortenHandler_Gzip(t *testing.T) {
 	s := service.NewShortenerService(repo)
 	baseURL := "http://localhost:8080"
 	log := zap.NewNop()
+	secretKey := "secret-key"
 
 	r := chi.NewRouter()
 	r.Use(middlewares.GzipRequestMiddleware)
 	r.Use(middlewares.GzipMiddleware)
-	r.Use(middlewares.AuthMiddleware)
+	r.Use(middlewares.AuthMiddleware(secretKey))
 	r.Post("/api/shorten", func(w http.ResponseWriter, r *http.Request) {
 		handler.JSONShortenHandler(w, r, s, baseURL, log)
 	})

@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/iolshn04/go-musthave-shortened-url/internal/model"
 	"github.com/iolshn04/go-musthave-shortened-url/internal/repository"
@@ -18,6 +19,7 @@ type mockRepo struct {
 type mockRecord struct {
 	UserID      string
 	OriginalURL string
+	Deleted     bool
 }
 
 func newMockRepo() *mockRepo {
@@ -115,6 +117,36 @@ func (m *mockRepo) GetByUser(ctx context.Context, userID string) ([]model.UserUR
 }
 
 func (m *mockRepo) Ping(ctx context.Context) error {
+	return nil
+}
+
+func (m *mockRepo) MarkDeleted(
+	ctx context.Context,
+	userID string,
+	ids []string,
+) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, id := range ids {
+		rec, ok := m.data[id]
+		if !ok {
+			continue
+		}
+		if rec.UserID != userID {
+			continue
+		}
+
+		rec.Deleted = true
+		m.data[id] = rec
+	}
+
 	return nil
 }
 
@@ -216,5 +248,30 @@ func TestShortenerService_GetByUser_NoContent(t *testing.T) {
 	_, err := repo.GetByUser(ctx, userID)
 	if err != repository.ErrNotFound {
 		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestShortenerService_DeleteUserURLs(t *testing.T) {
+	repo := newMockRepo()
+	s := NewShortenerService(repo)
+	ctx := context.Background()
+	userID := "user123"
+
+	id1, _ := s.Shorten(ctx, userID, "https://google.com")
+	id2, _ := s.Shorten(ctx, userID, "https://yandex.ru")
+
+	if repo.data[id1].Deleted {
+		t.Fatal("url should not be deleted initially")
+	}
+
+	s.DeleteUserURLs(userID, []string{id1, id2})
+
+	time.Sleep(10 * time.Second)
+
+	if !repo.data[id1].Deleted {
+		t.Errorf("expected url %s to be marked as deleted", id1)
+	}
+	if !repo.data[id2].Deleted {
+		t.Errorf("expected url %s to be marked as deleted", id2)
 	}
 }

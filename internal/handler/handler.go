@@ -63,11 +63,16 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request, s *service.Shortene
 	}
 
 	original, err := s.GetOriginal(r.Context(), id)
-	if err == repository.ErrNotFound {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusNotFound)
+
+	switch {
+	case errors.Is(err, repository.ErrDeleted):
+		w.WriteHeader(http.StatusGone) // 410
 		return
-	} else if err != nil {
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusInternalServerError)
+	case errors.Is(err, repository.ErrNotFound):
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	case err != nil:
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
@@ -206,12 +211,34 @@ func UserURLsHandler(
 	_ = json.NewEncoder(w).Encode(urls)
 }
 
-func NewRouter(s *service.ShortenerService, baseURL string, log *zap.Logger, repo repository.Repository) *chi.Mux {
+func DeleteUserURLsHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+	s *service.ShortenerService,
+) {
+	userID, ok := middlewares.UserIDFromContext(r.Context())
+	if !ok || userID == "" {
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
+	}
+
+	var ids []string
+	if err := json.NewDecoder(r.Body).Decode(&ids); err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	go s.DeleteUserURLs(userID, ids)
+
+	w.WriteHeader(http.StatusAccepted)
+}
+
+func NewRouter(s *service.ShortenerService, baseURL string, log *zap.Logger, repo repository.Repository, secretKey string) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler { return logger.RequestLogger(log, next) })
 	r.Use(middlewares.GzipRequestMiddleware)
 	r.Use(middlewares.GzipMiddleware)
-	r.Use(middlewares.AuthMiddleware)
+	r.Use(middlewares.AuthMiddleware(secretKey))
 	r.Post("/", func(w http.ResponseWriter, r *http.Request) {
 		CreateHandler(w, r, s, baseURL, log)
 	})
@@ -229,6 +256,9 @@ func NewRouter(s *service.ShortenerService, baseURL string, log *zap.Logger, rep
 	})
 	r.Get("/api/user/urls", func(w http.ResponseWriter, r *http.Request) {
 		UserURLsHandler(w, r, repo, baseURL)
+	})
+	r.Delete("/api/user/urls", func(w http.ResponseWriter, r *http.Request) {
+		DeleteUserURLsHandler(w, r, s)
 	})
 	return r
 }

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"github.com/golang-migrate/migrate/v4"
@@ -94,10 +95,24 @@ func (p *postgresRepository) SaveBatch(ctx context.Context, userID string, data 
 
 func (p *postgresRepository) Get(ctx context.Context, shortID string) (string, error) {
 	var original string
-	err := p.db.GetContext(ctx, &original, `SELECT original_url FROM urls WHERE short_url=$1`, shortID)
-	if err != nil {
+	var deleted bool
+
+	err := p.db.QueryRowContext(
+		ctx,
+		`SELECT original_url, is_deleted FROM urls WHERE short_url=$1`,
+		shortID,
+	).Scan(&original, &deleted)
+
+	if err == sql.ErrNoRows {
 		return "", ErrNotFound
 	}
+	if err != nil {
+		return "", err
+	}
+	if deleted {
+		return "", ErrDeleted
+	}
+
 	return original, nil
 }
 
@@ -117,4 +132,24 @@ func (p *postgresRepository) GetByUser(ctx context.Context, userID string) ([]mo
 
 func (p *postgresRepository) Ping(ctx context.Context) error {
 	return p.db.PingContext(ctx)
+}
+
+func (p *postgresRepository) MarkDeleted(
+	ctx context.Context,
+	userID string,
+	shortIDs []string,
+) error {
+	if len(shortIDs) == 0 {
+		return nil
+	}
+
+	_, err := p.db.ExecContext(
+		ctx,
+		`UPDATE urls
+         SET is_deleted = TRUE
+         WHERE user_id = $1 AND short_url = ANY($2)`,
+		userID,
+		pq.Array(shortIDs),
+	)
+	return err
 }

@@ -28,7 +28,7 @@ func main() {
 		log.Fatal("failed to initialize repository", zap.Error(err))
 	}
 	shortener := service.NewShortenerService(repo)
-	router := handler.NewRouter(shortener, appCfg.BaseURL, log, repo)
+	router := handler.NewRouter(shortener, appCfg.BaseURL, log, repo, appCfg.SecretKey)
 
 	log.Info("HTTP server listening", zap.String("address", appCfg.ServerAddress))
 	if err := http.ListenAndServe(appCfg.ServerAddress, router); err != nil {

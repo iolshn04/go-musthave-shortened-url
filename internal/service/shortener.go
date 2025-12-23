@@ -5,17 +5,29 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
-	"strings"
-
 	"github.com/iolshn04/go-musthave-shortened-url/internal/repository"
+	"strings"
+	"time"
 )
 
 type ShortenerService struct {
-	repo repository.Repository
+	repo       repository.Repository
+	deleteChan chan deleteTask
+}
+
+type deleteTask struct {
+	userID string
+	ids    []string
 }
 
 func NewShortenerService(repo repository.Repository) *ShortenerService {
-	return &ShortenerService{repo: repo}
+	s := &ShortenerService{
+		repo:       repo,
+		deleteChan: make(chan deleteTask, 100),
+	}
+	go s.deleteWorker()
+
+	return s
 }
 
 func (s *ShortenerService) Shorten(ctx context.Context, userID, original string) (string, error) {
@@ -62,4 +74,54 @@ func (s *ShortenerService) ShortenBatch(
 	}
 
 	return result, nil
+}
+
+func (s *ShortenerService) DeleteUserURLs(
+	userID string,
+	shortIDs []string,
+) {
+	if len(shortIDs) == 0 {
+		return
+	}
+
+	s.deleteChan <- deleteTask{
+		userID: userID,
+		ids:    shortIDs,
+	}
+}
+
+func (s *ShortenerService) deleteWorker() {
+	const batchSize = 100
+
+	for {
+		task, ok := <-s.deleteChan
+		if !ok {
+			return
+		}
+		batch := []deleteTask{task}
+
+	Loop:
+		for len(batch) < batchSize {
+			select {
+			case t, ok := <-s.deleteChan:
+				if !ok {
+					break Loop
+				}
+				batch = append(batch, t)
+			default:
+				break Loop
+			}
+		}
+
+		grouped := make(map[string][]string)
+		for _, t := range batch {
+			grouped[t.userID] = append(grouped[t.userID], t.ids...)
+		}
+
+		for userID, ids := range grouped {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			_ = s.repo.MarkDeleted(ctx, userID, ids)
+			cancel()
+		}
+	}
 }

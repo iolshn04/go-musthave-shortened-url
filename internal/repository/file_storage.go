@@ -19,6 +19,7 @@ type fileEntry struct {
 	UserID   string `json:"user_id"`
 	ShortURL string `json:"short_url"`
 	Original string `json:"original_url"`
+	Deleted  bool   `json:"deleted"`
 }
 
 func NewFileStorage(path string) (Repository, error) {
@@ -127,5 +128,30 @@ func (f *fileStorage) SaveBatch(ctx context.Context, userID string, data map[str
 	if err := f.mem.SaveBatch(ctx, userID, data); err != nil {
 		return err
 	}
+	return f.persist()
+}
+
+func (f *fileStorage) MarkDeleted(ctx context.Context, userID string, ids []string) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	memData, ok := f.mem.(*memoryStorage)
+	if !ok {
+		return nil
+	}
+
+	for _, id := range ids {
+		rec, ok := memData.data[id]
+		if ok && rec.UserID == userID {
+			rec.Deleted = true
+			memData.data[id] = rec
+		}
+	}
+
 	return f.persist()
 }

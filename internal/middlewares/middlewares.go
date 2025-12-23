@@ -16,7 +16,6 @@ type contextKey string
 
 const UserIDKey contextKey = "userID"
 const cookieName = "user_id"
-const secretKey = "super-secret-key"
 
 func GzipRequestMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -92,48 +91,50 @@ func (w *responseGzipWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
-func AuthMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, err := r.Cookie(cookieName)
+func AuthMiddleware(secretKey string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			c, err := r.Cookie(cookieName)
 
-		if err != nil || !validCookie(c.Value) {
-			userID := uuid.NewString()
-			value := userID + "|" + sign(userID)
+			if err != nil || !validCookie(c.Value, secretKey) {
+				userID := uuid.NewString()
+				value := userID + "|" + sign(userID, secretKey)
 
-			http.SetCookie(w, &http.Cookie{
-				Name:  cookieName,
-				Value: value,
-				Path:  "/",
-			})
+				http.SetCookie(w, &http.Cookie{
+					Name:  cookieName,
+					Value: value,
+					Path:  "/",
+				})
 
-			ctx := context.WithValue(r.Context(), UserIDKey, userID)
+				ctx := context.WithValue(r.Context(), UserIDKey, userID)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+
+			parts := strings.Split(c.Value, "|")
+			if len(parts) != 2 {
+				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+				return
+			}
+
+			ctx := context.WithValue(r.Context(), UserIDKey, parts[0])
 			next.ServeHTTP(w, r.WithContext(ctx))
-			return
-		}
-
-		parts := strings.Split(c.Value, "|")
-		if len(parts) != 2 {
-			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
-			return
-		}
-
-		ctx := context.WithValue(r.Context(), UserIDKey, parts[0])
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+		})
+	}
 }
 
-func sign(value string) string {
+func sign(value, secretKey string) string {
 	h := hmac.New(sha256.New, []byte(secretKey))
 	h.Write([]byte(value))
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func validCookie(value string) bool {
+func validCookie(value, secretKey string) bool {
 	parts := strings.Split(value, "|")
 	if len(parts) != 2 {
 		return false
 	}
-	return sign(parts[0]) == parts[1]
+	return sign(parts[0], secretKey) == parts[1]
 }
 
 func UserIDFromContext(ctx context.Context) (string, bool) {
