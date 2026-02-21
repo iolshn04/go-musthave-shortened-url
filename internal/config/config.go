@@ -11,6 +11,9 @@ type AppConfig struct {
 	LogLevel        string
 	FileStoragePath string
 	SecretKey       string
+	DSN             string
+	AuditFile       string
+	AuditURL        string
 }
 
 func NewAppConfig() *AppConfig {
@@ -27,6 +30,10 @@ func NewAppConfig() *AppConfig {
 	flagBase := fs.String("b", "", "base url")
 	flagLogLevel := fs.String("l", "", "log level")
 	flagFileStoragePath := fs.String("f", "", "file storage path")
+	flagAuditFile := fs.String("audit-file", "", "audit file path")
+	flagAuditURL := fs.String("audit-url", "", "audit remote url")
+	flagDatabaseDSN := fs.String("d", "", "database DSN")
+
 	_ = fs.Parse(os.Args[1:])
 
 	cfg := &AppConfig{}
@@ -66,6 +73,26 @@ func NewAppConfig() *AppConfig {
 		cfg.SecretKey = val
 	} else {
 		cfg.SecretKey = defaultSecretKey
+	}
+
+	if val, ok := os.LookupEnv("DATABASE_DSN"); ok {
+		cfg.DSN = val
+	} else if *flagDatabaseDSN != "" {
+		cfg.DSN = *flagDatabaseDSN
+	} else {
+		cfg.DSN = ""
+	}
+
+	if val, ok := os.LookupEnv("AUDIT_FILE"); ok {
+		cfg.AuditFile = val
+	} else {
+		cfg.AuditFile = *flagAuditFile
+	}
+
+	if val, ok := os.LookupEnv("AUDIT_URL"); ok {
+		cfg.AuditURL = val
+	} else {
+		cfg.AuditURL = *flagAuditURL
 	}
 
 	return cfg

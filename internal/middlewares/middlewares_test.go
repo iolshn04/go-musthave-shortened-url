@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"github.com/iolshn04/go-musthave-shortened-url/internal/audit"
 	"go.uber.org/zap"
 	"io"
 	"net/http"
@@ -20,19 +21,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type DummyObserver struct{}
+
+func (d *DummyObserver) Notify(e audit.Event) {}
+
 func TestJSONShortenHandler_Gzip(t *testing.T) {
 	repo := repository.NewMemoryStorage()
 	s := service.NewShortenerService(repo)
 	baseURL := "http://localhost:8080"
 	log := zap.NewNop()
 	secretKey := "secret-key"
+	auditor := audit.NewAuditor()
+	auditor.Register(&DummyObserver{})
 
 	r := chi.NewRouter()
 	r.Use(middlewares.GzipRequestMiddleware)
 	r.Use(middlewares.GzipMiddleware)
 	r.Use(middlewares.AuthMiddleware(secretKey))
 	r.Post("/api/shorten", func(w http.ResponseWriter, r *http.Request) {
-		handler.JSONShortenHandler(w, r, s, baseURL, log)
+		handler.JSONShortenHandler(w, r, s, baseURL, log, auditor)
 	})
 
 	srv := httptest.NewServer(r)
