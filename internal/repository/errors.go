@@ -6,6 +6,7 @@ import (
 )
 
 var ErrNotFound = errors.New("url not found")
+var ErrDeleted = errors.New("url deleted")
 
 type ErrAlreadyExistsWithID struct {
 	ExistingID string

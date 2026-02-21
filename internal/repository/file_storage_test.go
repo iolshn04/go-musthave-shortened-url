@@ -10,6 +10,7 @@ import (
 
 func TestFileStorage_SaveAndGet(t *testing.T) {
 	file := "test_data.json"
+	userID := "user1"
 	_ = os.Remove(file)
 	defer os.Remove(file)
 
@@ -18,7 +19,7 @@ func TestFileStorage_SaveAndGet(t *testing.T) {
 		t.Fatalf("ошибка создания хранилища: %v", err)
 	}
 
-	err = fs.Save(context.Background(), "abc123", "https://example.com")
+	err = fs.Save(context.Background(), userID, "abc123", "https://example.com")
 	if err != nil {
 		t.Fatalf("ошибка сохранения: %v", err)
 	}
@@ -48,6 +49,7 @@ func TestFileStorage_GetNotFound(t *testing.T) {
 
 func TestFileStorage_PersistLoad(t *testing.T) {
 	file := "test_data.json"
+	userID := "user1"
 	_ = os.Remove(file)
 	defer os.Remove(file)
 
@@ -56,8 +58,8 @@ func TestFileStorage_PersistLoad(t *testing.T) {
 		t.Fatalf("ошибка создания: %v", err)
 	}
 
-	fs.Save(context.Background(), "a1", "https://google.com")
-	fs.Save(context.Background(), "b2", "https://yandex.ru")
+	fs.Save(context.Background(), userID, "a1", "https://google.com")
+	fs.Save(context.Background(), userID, "b2", "https://yandex.ru")
 
 	fs2, err := repository.NewFileStorage(file)
 	if err != nil {
@@ -77,6 +79,7 @@ func TestFileStorage_PersistLoad(t *testing.T) {
 
 func TestFileStorage_SaveBatchAndGet(t *testing.T) {
 	file := "test_data.json"
+	userID := "user1"
 	_ = os.Remove(file)
 	defer os.Remove(file)
 
@@ -90,7 +93,7 @@ func TestFileStorage_SaveBatchAndGet(t *testing.T) {
 		"id2": "https://yandex.ru",
 	}
 
-	err = fs.SaveBatch(context.Background(), data)
+	err = fs.SaveBatch(context.Background(), userID, data)
 	if err != nil {
 		t.Fatalf("ошибка пакетного сохранения: %v", err)
 	}
@@ -108,6 +111,7 @@ func TestFileStorage_SaveBatchAndGet(t *testing.T) {
 
 func TestFileStorage_ContextCancelled(t *testing.T) {
 	file := "test_data.json"
+	userID := "user1"
 	_ = os.Remove(file)
 	defer os.Remove(file)
 
@@ -116,12 +120,12 @@ func TestFileStorage_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := fs.Save(ctx, "id", "url")
+	err := fs.Save(ctx, userID, "id", "url")
 	if err != context.Canceled {
 		t.Errorf("ожидался context.Canceled, получено %v", err)
 	}
 
-	err = fs.SaveBatch(ctx, map[string]string{
+	err = fs.SaveBatch(ctx, userID, map[string]string{
 		"id1": "url1",
 	})
 	if err != context.Canceled {

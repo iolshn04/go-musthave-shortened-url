@@ -10,6 +10,7 @@ type AppConfig struct {
 	BaseURL         string
 	LogLevel        string
 	FileStoragePath string
+	SecretKey       string
 }
 
 func NewAppConfig() *AppConfig {
@@ -18,6 +19,7 @@ func NewAppConfig() *AppConfig {
 		defaultBaseURL         = "http://localhost:8080"
 		defaultLogLevel        = "info"
 		defaultFileStoragePath = "stortened_urls.json"
+		defaultSecretKey       = "super-secret-key"
 	)
 
 	fs := flag.NewFlagSet("shortener", flag.ContinueOnError)
@@ -59,6 +61,11 @@ func NewAppConfig() *AppConfig {
 		cfg.FileStoragePath = *flagFileStoragePath
 	} else {
 		cfg.FileStoragePath = defaultFileStoragePath
+	}
+	if val, ok := os.LookupEnv("SECRET_KEY"); ok {
+		cfg.SecretKey = val
+	} else {
+		cfg.SecretKey = defaultSecretKey
 	}
 
 	return cfg

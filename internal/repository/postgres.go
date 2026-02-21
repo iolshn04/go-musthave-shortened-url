@@ -2,13 +2,16 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/iolshn04/go-musthave-shortened-url/internal/model"
 	"github.com/jackc/pgerrcode"
 	"github.com/lib/pq"
+	"log"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -42,17 +45,17 @@ func runMigrations(dsn string) error {
 	return nil
 }
 
-func (p *postgresRepository) Save(ctx context.Context, id, original string) error {
+func (p *postgresRepository) Save(ctx context.Context, userID, shortID, original string) error {
 	_, err := p.db.ExecContext(ctx,
-		`INSERT INTO urls (short_url, original_url)
-         VALUES ($1, $2)`,
-		id, original)
+		`INSERT INTO urls (user_id, short_url, original_url)
+         VALUES ($1, $2, $3)`,
+		userID, shortID, original)
 	if err != nil {
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) && pqErr.Code == pgerrcode.UniqueViolation {
 			var existingID string
 			getErr := p.db.GetContext(ctx, &existingID,
-				`SELECT short_url FROM urls WHERE original_url=$1`, original)
+				`SELECT short_url FROM urls WHERE original_url=$1 AND user_id=$2`, original, userID)
 			if getErr != nil {
 				return fmt.Errorf("failed to get existing url after unique violation: %w", getErr)
 			}
@@ -63,29 +66,16 @@ func (p *postgresRepository) Save(ctx context.Context, id, original string) erro
 	return nil
 }
 
-func (p *postgresRepository) Get(ctx context.Context, id string) (string, error) {
-	var original string
-	err := p.db.GetContext(ctx, &original, `SELECT original_url FROM urls WHERE short_url=$1`, id)
-	if err != nil {
-		return "", ErrNotFound
-	}
-	return original, nil
-}
-
-func (p *postgresRepository) Ping(ctx context.Context) error {
-	return p.db.PingContext(ctx)
-}
-
-func (p *postgresRepository) SaveBatch(ctx context.Context, data map[string]string) error {
+func (p *postgresRepository) SaveBatch(ctx context.Context, userID string, data map[string]string) error {
 	tx, err := p.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return err
 	}
 
 	stmt, err := tx.PrepareContext(ctx, `
-        INSERT INTO urls (short_url, original_url)
-        VALUES ($1, $2)
-        ON CONFLICT (short_url) DO NOTHING
+        INSERT INTO urls (user_id, short_url, original_url)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (original_url, user_id) DO NOTHING
     `)
 	if err != nil {
 		_ = tx.Rollback()
@@ -93,12 +83,73 @@ func (p *postgresRepository) SaveBatch(ctx context.Context, data map[string]stri
 	}
 	defer stmt.Close()
 
-	for k, v := range data {
-		if _, err := stmt.ExecContext(ctx, k, v); err != nil {
+	for short, original := range data {
+		if _, err := stmt.ExecContext(ctx, userID, short, original); err != nil {
 			_ = tx.Rollback()
 			return err
 		}
 	}
 
 	return tx.Commit()
+}
+
+func (p *postgresRepository) Get(ctx context.Context, shortID string) (string, error) {
+	var original string
+	var deleted bool
+
+	err := p.db.QueryRowContext(
+		ctx,
+		`SELECT original_url, is_deleted FROM urls WHERE short_url=$1`,
+		shortID,
+	).Scan(&original, &deleted)
+
+	if err == sql.ErrNoRows {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	if deleted {
+		return "", ErrDeleted
+	}
+
+	return original, nil
+}
+
+func (p *postgresRepository) GetByUser(ctx context.Context, userID string) ([]model.UserURL, error) {
+	rows := []model.UserURL{}
+	err := p.db.SelectContext(ctx, &rows, `SELECT short_url, original_url FROM urls WHERE user_id=$1`, userID)
+	log.Printf("GetByUser: querying for userID=%s", userID)
+	log.Printf("rows returned: %+v", rows)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, ErrNotFound
+	}
+	return rows, nil
+}
+
+func (p *postgresRepository) Ping(ctx context.Context) error {
+	return p.db.PingContext(ctx)
+}
+
+func (p *postgresRepository) MarkDeleted(
+	ctx context.Context,
+	userID string,
+	shortIDs []string,
+) error {
+	if len(shortIDs) == 0 {
+		return nil
+	}
+
+	_, err := p.db.ExecContext(
+		ctx,
+		`UPDATE urls
+         SET is_deleted = TRUE
+         WHERE user_id = $1 AND short_url = ANY($2)`,
+		userID,
+		pq.Array(shortIDs),
+	)
+	return err
 }
