@@ -5,9 +5,10 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
-	"github.com/iolshn04/go-musthave-shortened-url/internal/repository"
 	"strings"
 	"time"
+
+	"github.com/iolshn04/go-musthave-shortened-url/internal/repository"
 )
 
 type ShortenerService struct {

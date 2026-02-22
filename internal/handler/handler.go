@@ -3,14 +3,15 @@ package handler
 import (
 	"encoding/json"
 	"errors"
-	"github.com/iolshn04/go-musthave-shortened-url/internal/audit"
-	"github.com/iolshn04/go-musthave-shortened-url/internal/logger"
-	"github.com/iolshn04/go-musthave-shortened-url/internal/middlewares"
-	"go.uber.org/zap"
 	"io"
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/iolshn04/go-musthave-shortened-url/internal/audit"
+	"github.com/iolshn04/go-musthave-shortened-url/internal/logger"
+	"github.com/iolshn04/go-musthave-shortened-url/internal/middlewares"
+	"go.uber.org/zap"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/iolshn04/go-musthave-shortened-url/internal/model"

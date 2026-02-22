@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/iolshn04/go-musthave-shortened-url/internal/model"
 	"os"
 	"sync"
+
+	"github.com/iolshn04/go-musthave-shortened-url/internal/model"
 )
 
 type fileStorage struct {

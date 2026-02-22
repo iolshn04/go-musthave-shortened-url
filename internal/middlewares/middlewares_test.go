@@ -5,12 +5,13 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
-	"github.com/iolshn04/go-musthave-shortened-url/internal/audit"
-	"go.uber.org/zap"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/iolshn04/go-musthave-shortened-url/internal/audit"
+	"go.uber.org/zap"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/iolshn04/go-musthave-shortened-url/internal/handler"

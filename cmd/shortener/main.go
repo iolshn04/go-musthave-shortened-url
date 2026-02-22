@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
-	"go.uber.org/zap"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+
+	"go.uber.org/zap"
 
 	"github.com/iolshn04/go-musthave-shortened-url/internal/audit"
 	"github.com/iolshn04/go-musthave-shortened-url/internal/config"
