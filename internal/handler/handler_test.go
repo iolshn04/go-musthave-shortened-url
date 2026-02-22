@@ -212,3 +212,24 @@ func TestBatchShortenHandler(t *testing.T) {
 		assert.True(t, item.ShortURL != "")
 	}
 }
+
+func BenchmarkCreateHandler(b *testing.B) {
+	repo := repository.NewMemoryStorage()
+	s := service.NewShortenerService(repo)
+	auditor := audit.NewAuditor()
+	auditor.Register(&DummyObserver{})
+
+	baseURL := "http://localhost:8080"
+	log := zap.NewNop()
+
+	for i := 0; i < b.N; i++ {
+		req := httptest.NewRequest("POST", "/", strings.NewReader("https://example.com"))
+
+		ctx := context.WithValue(req.Context(), middlewares.UserIDKey, "bench-user")
+		req = req.WithContext(ctx)
+
+		w := httptest.NewRecorder()
+
+		CreateHandler(w, req, s, baseURL, log, auditor)
+	}
+}

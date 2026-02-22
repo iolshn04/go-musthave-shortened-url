@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go.uber.org/zap"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 
 	"github.com/iolshn04/go-musthave-shortened-url/internal/audit"
@@ -37,6 +38,12 @@ func main() {
 		httpObs := audit.NewHTTPObserver(appCfg.AuditURL)
 		auditor.Register(httpObs)
 	}
+	go func() {
+		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+			log.Error("pprof server error", zap.Error(err))
+		}
+	}()
+
 	if err != nil {
 		log.Fatal("failed to initialize repository", zap.Error(err))
 	}

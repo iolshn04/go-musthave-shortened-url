@@ -10,10 +10,10 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/iolshn04/go-musthave-shortened-url/internal/model"
 	"github.com/jackc/pgerrcode"
+	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 	"log"
-
-	"github.com/jmoiron/sqlx"
+	"time"
 )
 
 type postgresRepository struct {
@@ -29,7 +29,9 @@ func NewPostgresRepository(dsn string) (Repository, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to postgres: %w", err)
 	}
-
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(time.Hour)
 	repo := &postgresRepository{db: db}
 	return repo, nil
 }

@@ -33,5 +33,9 @@ func (h *HTTPObserver) Notify(e Event) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	_, _ = h.client.Do(req)
+	resp, err := h.client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
 }
