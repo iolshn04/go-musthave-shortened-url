@@ -6,6 +6,8 @@ import (
 	"github.com/iolshn04/go-musthave-shortened-url/internal/model"
 )
 
+// Repository определяет интерфейс хранилища сокращённых URL.
+// Реализация может быть в памяти, в файле или в базе данных.
 type Repository interface {
 	Save(ctx context.Context, userID, shortID, original string) error
 	SaveBatch(ctx context.Context, userID string, data map[string]string) error

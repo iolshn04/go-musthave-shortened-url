@@ -19,6 +19,9 @@ import (
 	"github.com/iolshn04/go-musthave-shortened-url/internal/service"
 )
 
+// CreateHandler обрабатывает текстовый POST-запрос
+// на создание короткой ссылки.
+// Возвращает сокращённый URL в теле ответа.
 func CreateHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerService, baseURL string, log *zap.Logger, auditor *audit.Auditor) {
 	userID, ok := middlewares.UserIDFromContext(r.Context())
 	if !ok || userID == "" {
@@ -64,6 +67,14 @@ func CreateHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerS
 	_, _ = w.Write([]byte(fullURL))
 }
 
+// RedirectHandler выполняет редирект на оригинальный URL
+// по короткому идентификатору.
+//
+// Возвращает:
+//
+//	307 — если ссылка найдена
+//	404 — если не найдена
+//	410 — если помечена как удалённая
 func RedirectHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerService, auditor *audit.Auditor) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -98,6 +109,8 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request, s *service.Shortene
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
+// JSONShortenHandler обрабатывает JSON-запрос
+// на создание короткой ссылки и возвращает результат в формате JSON.
 func JSONShortenHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerService, baseURL string, log *zap.Logger, auditor *audit.Auditor) {
 	userID, ok := middlewares.UserIDFromContext(r.Context())
 	if !ok || userID == "" {
@@ -146,6 +159,8 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request, s *service.Short
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
+// PingHandler проверяет доступность хранилища.
+// Используется для health-check эндпоинта.
 func PingHandler(w http.ResponseWriter, r *http.Request, repo repository.Repository) {
 	if err := repo.Ping(r.Context()); err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -154,6 +169,8 @@ func PingHandler(w http.ResponseWriter, r *http.Request, repo repository.Reposit
 	w.WriteHeader(http.StatusOK)
 }
 
+// BatchShortenHandler обрабатывает batch-запрос
+// на создание нескольких коротких ссылок.
 func BatchShortenHandler(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -205,6 +222,8 @@ func BatchShortenHandler(
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
+// UserURLsHandler возвращает список всех ссылок,
+// созданных текущим пользователем.
 func UserURLsHandler(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -235,6 +254,8 @@ func UserURLsHandler(
 	_ = json.NewEncoder(w).Encode(urls)
 }
 
+// DeleteUserURLsHandler принимает список коротких идентификаторов
+// и инициирует их асинхронное удаление.
 func DeleteUserURLsHandler(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -257,6 +278,8 @@ func DeleteUserURLsHandler(
 	w.WriteHeader(http.StatusAccepted)
 }
 
+// NewRouter настраивает маршрутизацию HTTP-запросов,
+// подключает middleware и регистрирует все эндпоинты сервиса.
 func NewRouter(
 	s *service.ShortenerService,
 	baseURL string,

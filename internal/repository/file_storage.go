@@ -23,6 +23,8 @@ type fileEntry struct {
 	Deleted  bool   `json:"deleted"`
 }
 
+// NewFileStorage создаёт файловую реализацию репозитория.
+// Данные сохраняются в JSON-файл на диске.
 func NewFileStorage(path string) (Repository, error) {
 	fs := &fileStorage{
 		mem:  NewMemoryStorage(),

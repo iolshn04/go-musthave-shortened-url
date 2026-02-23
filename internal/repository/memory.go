@@ -17,6 +17,8 @@ type memoryStorage struct {
 	mu   sync.Mutex
 }
 
+// NewMemoryStorage создаёт реализацию репозитория
+// с хранением данных в оперативной памяти.
 func NewMemoryStorage() Repository {
 	return &memoryStorage{data: make(map[string]memoryRecord)}
 }

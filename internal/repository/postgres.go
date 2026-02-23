@@ -21,6 +21,8 @@ type postgresRepository struct {
 	db *sqlx.DB
 }
 
+// NewPostgresRepository создаёт репозиторий,
+// работающий с PostgreSQL, и выполняет миграции базы данных.
 func NewPostgresRepository(dsn string) (Repository, error) {
 	if err := runMigrations(dsn); err != nil {
 		return nil, fmt.Errorf("migrations failed: %w", err)
