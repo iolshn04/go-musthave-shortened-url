@@ -32,7 +32,7 @@ func TestJSONShortenHandler_Gzip(t *testing.T) {
 	baseURL := "http://localhost:8080"
 	log := zap.NewNop()
 	secretKey := "secret-key"
-	auditor := audit.NewAuditor()
+	auditor := audit.NewAuditor(log)
 	auditor.Register(&DummyObserver{})
 
 	r := chi.NewRouter()

@@ -1,7 +1,8 @@
+# Результат оптимизации профиля памяти:
 ```
 go tool pprof -top -diff_base=profiles/base.pprof profiles/result.pprof
 ```
-Результат после оптимизации пула соединений:
+
 ```
 flat      flat%   function
 -1024.03kB        syscall.anyToSockaddr
@@ -9,15 +10,24 @@ flat      flat%   function
 -516.76kB         runtime.procresize
 -1792.29kB        main.main
 ```
+## Оптимизация заключалась в настройке пула соединений PostgreSQL:
 
 
+- ограничено число открытых соединений (SetMaxOpenConns)
+- задано число idle соединений (SetMaxIdleConns)
+- установлено время жизни соединений (SetConnMaxLifetime)
+- Общее потребление heap-памяти уменьшилось примерно на ~1MB за счет переиспользования соединений.
+значения выбраны в тестовом варианте по результатам наблюдений
+
+Это позволило уменьшить количество аллокаций, связанных с созданием новых соединений,
+снизить нагрузку на GC и улучшить стабильность работы сервиса.
 
 
-# All in file
-# File: shortener
-# Type: inuse_space
-# Time: 2026-02-22 12:47:00 MSK
-# Showing nodes accounting for 4358.66kB, 100% of 4360.11kB total
+ All in file
+ File: shortener
+ Type: inuse_space
+ Time: 2026-02-22 12:47:00 MSK
+ Showing nodes accounting for 4358.66kB, 100% of 4360.11kB total
 ```
 flat  flat%   sum%        cum   cum%
 1028kB 23.58% 23.58%     1028kB 23.58%  bufio.NewReaderSize (inline)

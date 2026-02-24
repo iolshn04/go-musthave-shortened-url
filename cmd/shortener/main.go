@@ -25,13 +25,14 @@ func main() {
 		os.Exit(1)
 	}
 	repo, err := repository.NewRepositoryFromConfig(appCfg.DSN, appCfg.FileStoragePath, log)
-	auditor := audit.NewAuditor()
+	auditor := audit.NewAuditor(log)
 
 	if appCfg.AuditFile != "" {
 		fileObs, err := audit.NewFileObserver(appCfg.AuditFile)
 		if err != nil {
 			log.Fatal("failed to init audit file", zap.Error(err))
 		}
+		defer fileObs.Close()
 		auditor.Register(fileObs)
 	}
 

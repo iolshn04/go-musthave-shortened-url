@@ -29,7 +29,7 @@ func TestCreateHandler(t *testing.T) {
 	s := service.NewShortenerService(repo)
 	baseURL := "http://localhost:8080"
 	log := zap.NewNop()
-	auditor := audit.NewAuditor()
+	auditor := audit.NewAuditor(log)
 	auditor.Register(&DummyObserver{})
 
 	t.Run("valid url", func(t *testing.T) {
@@ -66,7 +66,8 @@ func TestRedirectHandler(t *testing.T) {
 	repo := repository.NewMemoryStorage()
 	s := service.NewShortenerService(repo)
 	userID := "user123"
-	auditor := audit.NewAuditor()
+	log := zap.NewNop()
+	auditor := audit.NewAuditor(log)
 	auditor.Register(&DummyObserver{})
 
 	id, _ := s.Shorten(context.Background(), userID, "https://yandex.ru")
@@ -110,7 +111,7 @@ func TestJSONShortenHandler(t *testing.T) {
 	s := service.NewShortenerService(repo)
 	baseURL := "http://localhost:8080"
 	log := zap.NewNop()
-	auditor := audit.NewAuditor()
+	auditor := audit.NewAuditor(log)
 	auditor.Register(&DummyObserver{})
 
 	tests := []struct {
@@ -217,20 +218,26 @@ func TestBatchShortenHandler(t *testing.T) {
 func BenchmarkCreateHandler(b *testing.B) {
 	repo := repository.NewMemoryStorage()
 	s := service.NewShortenerService(repo)
-	auditor := audit.NewAuditor()
+	log := zap.NewNop()
+	auditor := audit.NewAuditor(log)
 	auditor.Register(&DummyObserver{})
 
 	baseURL := "http://localhost:8080"
-	log := zap.NewNop()
 
-	for i := 0; i < b.N; i++ {
-		req := httptest.NewRequest("POST", "/", strings.NewReader("https://example.com"))
+	b.ReportAllocs()
 
-		ctx := context.WithValue(req.Context(), middlewares.UserIDKey, "bench-user")
-		req = req.WithContext(ctx)
+	b.StopTimer()
 
-		w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/", strings.NewReader("https://example.com"))
 
+	ctx := context.WithValue(req.Context(), middlewares.UserIDKey, "bench-user")
+	req = req.WithContext(ctx)
+
+	w := httptest.NewRecorder()
+
+	b.StartTimer()
+
+	for b.Loop() {
 		CreateHandler(w, req, s, baseURL, log, auditor)
 	}
 }

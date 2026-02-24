@@ -19,6 +19,9 @@ import (
 func ExampleCreateHandler() {
 	repo := repository.NewMemoryStorage()
 
+	// Инициализируем логгер
+	log := zap.NewNop()
+
 	// Инициализируем сервис
 	svc := service.NewShortenerService(repo)
 
@@ -29,7 +32,7 @@ func ExampleCreateHandler() {
 		strings.NewReader("https://example.com"),
 	)
 
-	auditor := audit.NewAuditor()
+	auditor := audit.NewAuditor(log)
 	auditor.Register(&DummyObserver{})
 
 	// Добавляем пользователя в context
