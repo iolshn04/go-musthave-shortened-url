@@ -6,17 +6,21 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"github.com/google/uuid"
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 type contextKey string
 
+// UserIDKey используется как ключ для хранения идентификатора пользователя в context.
 const UserIDKey contextKey = "userID"
 const cookieName = "user_id"
 
+// GzipRequestMiddleware распаковывает входящий HTTP-запрос,
+// если он сжат с использованием gzip.
 func GzipRequestMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Content-Encoding") == "gzip" {
@@ -32,6 +36,8 @@ func GzipRequestMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// GzipMiddleware сжимает HTTP-ответ в gzip,
+// если клиент поддерживает соответствующий encoding.
 func GzipMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
@@ -91,6 +97,8 @@ func (w *responseGzipWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
+// AuthMiddleware реализует аутентификацию пользователя через подписанные cookies.
+// Если cookie отсутствует или некорректна — создаётся новая.
 func AuthMiddleware(secretKey string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

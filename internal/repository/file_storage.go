@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/iolshn04/go-musthave-shortened-url/internal/model"
 	"os"
 	"sync"
+
+	"github.com/iolshn04/go-musthave-shortened-url/internal/model"
 )
 
 type fileStorage struct {
@@ -22,6 +23,8 @@ type fileEntry struct {
 	Deleted  bool   `json:"deleted"`
 }
 
+// NewFileStorage создаёт файловую реализацию репозитория.
+// Данные сохраняются в JSON-файл на диске.
 func NewFileStorage(path string) (Repository, error) {
 	fs := &fileStorage{
 		mem:  NewMemoryStorage(),

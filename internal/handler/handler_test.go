@@ -4,13 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/iolshn04/go-musthave-shortened-url/internal/middlewares"
-	"go.uber.org/zap"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/iolshn04/go-musthave-shortened-url/internal/audit"
+	"github.com/iolshn04/go-musthave-shortened-url/internal/middlewares"
+	"go.uber.org/zap"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/iolshn04/go-musthave-shortened-url/internal/repository"
@@ -18,18 +20,24 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type DummyObserver struct{}
+
+func (d *DummyObserver) Notify(e audit.Event) {}
+
 func TestCreateHandler(t *testing.T) {
 	repo := repository.NewMemoryStorage()
 	s := service.NewShortenerService(repo)
 	baseURL := "http://localhost:8080"
 	log := zap.NewNop()
+	auditor := audit.NewAuditor(log)
+	auditor.Register(&DummyObserver{})
 
 	t.Run("valid url", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/", strings.NewReader("https://yandex.ru"))
 		ctx := context.WithValue(req.Context(), middlewares.UserIDKey, "test-user")
 		req = req.WithContext(ctx)
 		w := httptest.NewRecorder()
-		CreateHandler(w, req, s, baseURL, log)
+		CreateHandler(w, req, s, baseURL, log, auditor)
 
 		resp := w.Result()
 		defer resp.Body.Close()
@@ -45,7 +53,7 @@ func TestCreateHandler(t *testing.T) {
 		ctx := context.WithValue(req.Context(), middlewares.UserIDKey, "test-user")
 		req = req.WithContext(ctx)
 		w := httptest.NewRecorder()
-		CreateHandler(w, req, s, baseURL, log)
+		CreateHandler(w, req, s, baseURL, log, auditor)
 
 		resp := w.Result()
 		defer resp.Body.Close()
@@ -58,6 +66,9 @@ func TestRedirectHandler(t *testing.T) {
 	repo := repository.NewMemoryStorage()
 	s := service.NewShortenerService(repo)
 	userID := "user123"
+	log := zap.NewNop()
+	auditor := audit.NewAuditor(log)
+	auditor.Register(&DummyObserver{})
 
 	id, _ := s.Shorten(context.Background(), userID, "https://yandex.ru")
 
@@ -69,7 +80,7 @@ func TestRedirectHandler(t *testing.T) {
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		w := httptest.NewRecorder()
-		RedirectHandler(w, req, s)
+		RedirectHandler(w, req, s, auditor)
 
 		resp := w.Result()
 		defer resp.Body.Close()
@@ -86,7 +97,7 @@ func TestRedirectHandler(t *testing.T) {
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		w := httptest.NewRecorder()
-		RedirectHandler(w, req, s)
+		RedirectHandler(w, req, s, auditor)
 
 		resp := w.Result()
 		defer resp.Body.Close()
@@ -100,6 +111,8 @@ func TestJSONShortenHandler(t *testing.T) {
 	s := service.NewShortenerService(repo)
 	baseURL := "http://localhost:8080"
 	log := zap.NewNop()
+	auditor := audit.NewAuditor(log)
+	auditor.Register(&DummyObserver{})
 
 	tests := []struct {
 		name       string
@@ -132,7 +145,7 @@ func TestJSONShortenHandler(t *testing.T) {
 			req = req.WithContext(ctx)
 			w := httptest.NewRecorder()
 
-			JSONShortenHandler(w, req, s, baseURL, log)
+			JSONShortenHandler(w, req, s, baseURL, log, auditor)
 
 			resp := w.Result()
 			defer resp.Body.Close()
@@ -199,5 +212,32 @@ func TestBatchShortenHandler(t *testing.T) {
 	assert.Len(t, respBody, 2)
 	for _, item := range respBody {
 		assert.True(t, item.ShortURL != "")
+	}
+}
+
+func BenchmarkCreateHandler(b *testing.B) {
+	repo := repository.NewMemoryStorage()
+	s := service.NewShortenerService(repo)
+	log := zap.NewNop()
+	auditor := audit.NewAuditor(log)
+	auditor.Register(&DummyObserver{})
+
+	baseURL := "http://localhost:8080"
+
+	b.ReportAllocs()
+
+	b.StopTimer()
+
+	req := httptest.NewRequest("POST", "/", strings.NewReader("https://example.com"))
+
+	ctx := context.WithValue(req.Context(), middlewares.UserIDKey, "bench-user")
+	req = req.WithContext(ctx)
+
+	w := httptest.NewRecorder()
+
+	b.StartTimer()
+
+	for b.Loop() {
+		CreateHandler(w, req, s, baseURL, log, auditor)
 	}
 }

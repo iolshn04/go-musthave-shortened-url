@@ -3,12 +3,15 @@ package handler
 import (
 	"encoding/json"
 	"errors"
-	"github.com/iolshn04/go-musthave-shortened-url/internal/logger"
-	"github.com/iolshn04/go-musthave-shortened-url/internal/middlewares"
-	"go.uber.org/zap"
 	"io"
 	"net/http"
 	"net/url"
+	"time"
+
+	"github.com/iolshn04/go-musthave-shortened-url/internal/audit"
+	"github.com/iolshn04/go-musthave-shortened-url/internal/logger"
+	"github.com/iolshn04/go-musthave-shortened-url/internal/middlewares"
+	"go.uber.org/zap"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/iolshn04/go-musthave-shortened-url/internal/model"
@@ -16,7 +19,10 @@ import (
 	"github.com/iolshn04/go-musthave-shortened-url/internal/service"
 )
 
-func CreateHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerService, baseURL string, log *zap.Logger) {
+// CreateHandler обрабатывает текстовый POST-запрос
+// на создание короткой ссылки.
+// Возвращает сокращённый URL в теле ответа.
+func CreateHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerService, baseURL string, log *zap.Logger, auditor *audit.Auditor) {
 	userID, ok := middlewares.UserIDFromContext(r.Context())
 	if !ok || userID == "" {
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
@@ -50,12 +56,26 @@ func CreateHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerS
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
+	auditor.Notify(audit.Event{
+		Timestamp: time.Now().Unix(),
+		Action:    "shorten",
+		UserID:    userID,
+		URL:       string(body),
+	})
 
 	w.WriteHeader(http.StatusCreated)
 	_, _ = w.Write([]byte(fullURL))
 }
 
-func RedirectHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerService) {
+// RedirectHandler выполняет редирект на оригинальный URL
+// по короткому идентификатору.
+//
+// Возвращает:
+//
+//	307 — если ссылка найдена
+//	404 — если не найдена
+//	410 — если помечена как удалённая
+func RedirectHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerService, auditor *audit.Auditor) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
@@ -66,7 +86,7 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request, s *service.Shortene
 
 	switch {
 	case errors.Is(err, repository.ErrDeleted):
-		w.WriteHeader(http.StatusGone) // 410
+		w.WriteHeader(http.StatusGone)
 		return
 	case errors.Is(err, repository.ErrNotFound):
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
@@ -76,11 +96,22 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request, s *service.Shortene
 		return
 	}
 
+	userID, _ := middlewares.UserIDFromContext(r.Context())
+
+	auditor.Notify(audit.Event{
+		Timestamp: time.Now().Unix(),
+		Action:    "follow",
+		UserID:    userID,
+		URL:       original,
+	})
+
 	w.Header().Set("Location", original)
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
-func JSONShortenHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerService, baseURL string, log *zap.Logger) {
+// JSONShortenHandler обрабатывает JSON-запрос
+// на создание короткой ссылки и возвращает результат в формате JSON.
+func JSONShortenHandler(w http.ResponseWriter, r *http.Request, s *service.ShortenerService, baseURL string, log *zap.Logger, auditor *audit.Auditor) {
 	userID, ok := middlewares.UserIDFromContext(r.Context())
 	if !ok || userID == "" {
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
@@ -117,11 +148,19 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request, s *service.Short
 	}
 
 	resp := model.ShortenResponse{Result: fullURL}
+	auditor.Notify(audit.Event{
+		Timestamp: time.Now().Unix(),
+		Action:    "shorten",
+		UserID:    userID,
+		URL:       req.URL,
+	})
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
+// PingHandler проверяет доступность хранилища.
+// Используется для health-check эндпоинта.
 func PingHandler(w http.ResponseWriter, r *http.Request, repo repository.Repository) {
 	if err := repo.Ping(r.Context()); err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -130,6 +169,8 @@ func PingHandler(w http.ResponseWriter, r *http.Request, repo repository.Reposit
 	w.WriteHeader(http.StatusOK)
 }
 
+// BatchShortenHandler обрабатывает batch-запрос
+// на создание нескольких коротких ссылок.
 func BatchShortenHandler(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -181,6 +222,8 @@ func BatchShortenHandler(
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
+// UserURLsHandler возвращает список всех ссылок,
+// созданных текущим пользователем.
 func UserURLsHandler(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -211,6 +254,8 @@ func UserURLsHandler(
 	_ = json.NewEncoder(w).Encode(urls)
 }
 
+// DeleteUserURLsHandler принимает список коротких идентификаторов
+// и инициирует их асинхронное удаление.
 func DeleteUserURLsHandler(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -233,20 +278,29 @@ func DeleteUserURLsHandler(
 	w.WriteHeader(http.StatusAccepted)
 }
 
-func NewRouter(s *service.ShortenerService, baseURL string, log *zap.Logger, repo repository.Repository, secretKey string) *chi.Mux {
+// NewRouter настраивает маршрутизацию HTTP-запросов,
+// подключает middleware и регистрирует все эндпоинты сервиса.
+func NewRouter(
+	s *service.ShortenerService,
+	baseURL string,
+	log *zap.Logger,
+	repo repository.Repository,
+	secretKey string,
+	auditor *audit.Auditor,
+) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler { return logger.RequestLogger(log, next) })
 	r.Use(middlewares.GzipRequestMiddleware)
 	r.Use(middlewares.GzipMiddleware)
 	r.Use(middlewares.AuthMiddleware(secretKey))
 	r.Post("/", func(w http.ResponseWriter, r *http.Request) {
-		CreateHandler(w, r, s, baseURL, log)
+		CreateHandler(w, r, s, baseURL, log, auditor)
 	})
 	r.Post("/api/shorten", func(w http.ResponseWriter, r *http.Request) {
-		JSONShortenHandler(w, r, s, baseURL, log)
+		JSONShortenHandler(w, r, s, baseURL, log, auditor)
 	})
 	r.Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
-		RedirectHandler(w, r, s)
+		RedirectHandler(w, r, s, auditor)
 	})
 	r.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
 		PingHandler(w, r, repo)
