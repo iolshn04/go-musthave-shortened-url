@@ -25,6 +25,7 @@ func Initialize(level string) (*zap.Logger, error) {
 	return zl, nil
 }
 
+// generate:reset
 type responseWriter struct {
 	http.ResponseWriter
 	status int
