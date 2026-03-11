@@ -2,6 +2,7 @@ package main
 
 import (
 	"go/ast"
+	"go/types"
 
 	"golang.org/x/tools/go/analysis"
 )
@@ -13,10 +14,9 @@ var Analyzer = &analysis.Analyzer{
 }
 
 func run(pass *analysis.Pass) (interface{}, error) {
+	pkgName := pass.Pkg.Name()
+
 	for _, file := range pass.Files {
-
-		pkgName := pass.Pkg.Name()
-
 		ast.Inspect(file, func(n ast.Node) bool {
 
 			call, ok := n.(*ast.CallExpr)
@@ -24,31 +24,36 @@ func run(pass *analysis.Pass) (interface{}, error) {
 				return true
 			}
 
-			// --- panic()
-			if ident, ok := call.Fun.(*ast.Ident); ok {
-				if ident.Name == "panic" {
-					pass.Reportf(call.Pos(), "panic call is forbidden")
-				}
+			// panic()
+			if ident, ok := call.Fun.(*ast.Ident); ok && ident.Name == "panic" {
+				pass.Reportf(call.Pos(), "panic call is forbidden")
+				return true
 			}
 
-			// --- log.Fatal / os.Exit
-			if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
 
-				if ident, ok := sel.X.(*ast.Ident); ok {
+			ident, ok := sel.X.(*ast.Ident)
+			if !ok {
+				return true
+			}
 
-					if ident.Name == "log" && sel.Sel.Name == "Fatal" {
-						if pkgName != "main" {
-							pass.Reportf(call.Pos(), "log.Fatal is forbidden outside main")
-						}
-					}
+			obj := pass.TypesInfo.Uses[ident]
+			pkgNameObj, ok := obj.(*types.PkgName)
+			if !ok {
+				return true
+			}
 
-					if ident.Name == "os" && sel.Sel.Name == "Exit" {
-						if pkgName != "main" {
-							pass.Reportf(call.Pos(), "os.Exit is forbidden outside main")
-						}
-					}
+			importedPath := pkgNameObj.Imported().Path()
 
-				}
+			if pkgName != "main" && importedPath == "log" && sel.Sel.Name == "Fatal" {
+				pass.Reportf(call.Pos(), "log.Fatal is forbidden outside main")
+			}
+
+			if pkgName != "main" && importedPath == "os" && sel.Sel.Name == "Exit" {
+				pass.Reportf(call.Pos(), "os.Exit is forbidden outside main")
 			}
 
 			return true
