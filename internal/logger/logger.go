@@ -25,6 +25,7 @@ func Initialize(level string) (*zap.Logger, error) {
 	return zl, nil
 }
 
+// generate:reset
 type responseWriter struct {
 	http.ResponseWriter
 	status int
@@ -47,9 +48,14 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 
 func RequestLogger(log *zap.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
 		start := time.Now()
-		rw := &responseWriter{ResponseWriter: w}
+
+		rw := writerPool.Get()
+		rw.ResponseWriter = w
+
 		next.ServeHTTP(rw, r)
+
 		duration := time.Since(start)
 
 		log.Info("HTTP request processed",
@@ -59,5 +65,8 @@ func RequestLogger(log *zap.Logger, next http.Handler) http.Handler {
 			zap.Int("responseSize", rw.size),
 			zap.Duration("duration", duration),
 		)
+
+		rw.ResponseWriter = nil
+		writerPool.Put(rw)
 	})
 }

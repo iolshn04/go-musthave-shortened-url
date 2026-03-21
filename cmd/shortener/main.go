@@ -16,7 +16,20 @@ import (
 	"github.com/iolshn04/go-musthave-shortened-url/internal/service"
 )
 
+var (
+	buildVersion = "N/A"
+	buildDate    = "N/A"
+	buildCommit  = "N/A"
+)
+
+func printBuildInfo() {
+	fmt.Println("Build version:", buildVersion)
+	fmt.Println("Build date:", buildDate)
+	fmt.Println("Build commit:", buildCommit)
+}
+
 func main() {
+	printBuildInfo()
 	appCfg := config.NewAppConfig()
 
 	log, err := logger.Initialize(appCfg.LogLevel)
