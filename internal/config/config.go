@@ -14,6 +14,7 @@ type AppConfig struct {
 	DSN             string
 	AuditFile       string
 	AuditURL        string
+	EnableHTTPS     bool
 }
 
 func NewAppConfig() *AppConfig {
@@ -33,6 +34,7 @@ func NewAppConfig() *AppConfig {
 	flagAuditFile := fs.String("audit-file", "", "audit file path")
 	flagAuditURL := fs.String("audit-url", "", "audit remote url")
 	flagDatabaseDSN := fs.String("d", "", "database DSN")
+	flagHTTPS := fs.Bool("s", false, "enable HTTPS")
 
 	_ = fs.Parse(os.Args[1:])
 
@@ -93,6 +95,12 @@ func NewAppConfig() *AppConfig {
 		cfg.AuditURL = val
 	} else {
 		cfg.AuditURL = *flagAuditURL
+	}
+
+	if val, ok := os.LookupEnv("ENABLE_HTTPS"); ok && val == "true" {
+		cfg.EnableHTTPS = true
+	} else {
+		cfg.EnableHTTPS = *flagHTTPS
 	}
 
 	return cfg

@@ -65,8 +65,23 @@ func main() {
 	shortener := service.NewShortenerService(repo)
 	router := handler.NewRouter(shortener, appCfg.BaseURL, log, repo, appCfg.SecretKey, auditor)
 
-	log.Info("HTTP server listening", zap.String("address", appCfg.ServerAddress))
-	if err := http.ListenAndServe(appCfg.ServerAddress, router); err != nil {
-		log.Fatal("server stopped with error", zap.Error(err))
+	certFile := "cert.pem"
+	keyFile := "key.pem"
+
+	if appCfg.EnableHTTPS {
+
+		log.Info("HTTPS server listening", zap.String("address", appCfg.ServerAddress))
+
+		if err := http.ListenAndServeTLS(appCfg.ServerAddress, certFile, keyFile, router); err != nil {
+			log.Fatal("server stopped with error", zap.Error(err))
+		}
+
+	} else {
+
+		log.Info("HTTP server listening", zap.String("address", appCfg.ServerAddress))
+
+		if err := http.ListenAndServe(appCfg.ServerAddress, router); err != nil {
+			log.Fatal("server stopped with error", zap.Error(err))
+		}
 	}
 }
