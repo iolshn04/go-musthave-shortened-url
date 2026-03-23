@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -37,7 +41,12 @@ func main() {
 		fmt.Printf("failed to initialize logger: %v\n", err)
 		os.Exit(1)
 	}
+
 	repo, err := repository.NewRepositoryFromConfig(appCfg.DSN, appCfg.FileStoragePath, log)
+	if err != nil {
+		log.Fatal("failed to initialize repository", zap.Error(err))
+	}
+
 	auditor := audit.NewAuditor(log)
 
 	if appCfg.AuditFile != "" {
@@ -53,35 +62,56 @@ func main() {
 		httpObs := audit.NewHTTPObserver(appCfg.AuditURL)
 		auditor.Register(httpObs)
 	}
+
 	go func() {
 		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
 			log.Error("pprof server error", zap.Error(err))
 		}
 	}()
 
-	if err != nil {
-		log.Fatal("failed to initialize repository", zap.Error(err))
-	}
 	shortener := service.NewShortenerService(repo)
 	router := handler.NewRouter(shortener, appCfg.BaseURL, log, repo, appCfg.SecretKey, auditor)
+
+	srv := &http.Server{
+		Addr:    appCfg.ServerAddress,
+		Handler: router,
+	}
 
 	certFile := "cert.pem"
 	keyFile := "key.pem"
 
-	if appCfg.EnableHTTPS {
+	go func() {
+		if appCfg.EnableHTTPS {
+			log.Info("HTTPS server listening", zap.String("address", appCfg.ServerAddress))
 
-		log.Info("HTTPS server listening", zap.String("address", appCfg.ServerAddress))
+			if err := srv.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
+				log.Fatal("server error", zap.Error(err))
+			}
+		} else {
+			log.Info("HTTP server listening", zap.String("address", appCfg.ServerAddress))
 
-		if err := http.ListenAndServeTLS(appCfg.ServerAddress, certFile, keyFile, router); err != nil {
-			log.Fatal("server stopped with error", zap.Error(err))
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatal("server error", zap.Error(err))
+			}
 		}
+	}()
 
-	} else {
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit,
+		syscall.SIGINT,
+		syscall.SIGTERM,
+		syscall.SIGQUIT,
+	)
 
-		log.Info("HTTP server listening", zap.String("address", appCfg.ServerAddress))
+	<-quit
+	log.Info("shutting down server...")
 
-		if err := http.ListenAndServe(appCfg.ServerAddress, router); err != nil {
-			log.Fatal("server stopped with error", zap.Error(err))
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Error("server shutdown failed", zap.Error(err))
 	}
+
+	log.Info("server exited properly")
 }
