@@ -1,41 +1,29 @@
 package config
 
 import (
-	"encoding/json"
 	"flag"
 	"os"
+	"strings"
+
+	"github.com/spf13/viper"
 )
 
 type AppConfig struct {
-	ServerAddress   string `json:"server_address"`
-	BaseURL         string `json:"base_url"`
-	LogLevel        string `json:"log_level"`
-	FileStoragePath string `json:"file_storage_path"`
-	SecretKey       string `json:"secret_key"`
-	DSN             string `json:"database_dsn"`
-	AuditFile       string `json:"audit_file"`
-	AuditURL        string `json:"audit_url"`
-	EnableHTTPS     bool   `json:"enable_https"`
+	ServerAddress   string `mapstructure:"server_address"`
+	BaseURL         string `mapstructure:"base_url"`
+	LogLevel        string `mapstructure:"log_level"`
+	FileStoragePath string `mapstructure:"file_storage_path"`
+	SecretKey       string `mapstructure:"secret_key"`
+	DSN             string `mapstructure:"database_dsn"`
+	AuditFile       string `mapstructure:"audit_file"`
+	AuditURL        string `mapstructure:"audit_url"`
+	EnableHTTPS     bool   `mapstructure:"enable_https"`
+	CertFile        string `mapstructure:"cert_file"`
+	KeyFile         string `mapstructure:"key_file"`
 }
 
-func loadFromFile(path string) (*AppConfig, error) {
-	if path == "" {
-		return &AppConfig{}, nil
-	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	var cfg AppConfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, err
-	}
-
-	return &cfg, nil
-}
-
+// NewAppConfig загружает конфиг с приоритетом:
+// defaults < config file < flags < ENV
 func NewAppConfig() *AppConfig {
 	const (
 		defaultServerAddress   = "localhost:8080"
@@ -43,19 +31,22 @@ func NewAppConfig() *AppConfig {
 		defaultLogLevel        = "info"
 		defaultFileStoragePath = "stortened_urls.json"
 		defaultSecretKey       = "super-secret-key"
+		defaultCertFile        = "cert.pem"
+		defaultKeyFile         = "key.pem"
 	)
 
 	fs := flag.NewFlagSet("shortener", flag.ContinueOnError)
 
-	// flags
 	flagServer := fs.String("a", "", "server address")
 	flagBase := fs.String("b", "", "base url")
-	flagLogLevel := fs.String("l", "", "log level")
-	flagFileStoragePath := fs.String("f", "", "file storage path")
+	flagLog := fs.String("l", "", "log level")
+	flagFile := fs.String("f", "", "file storage path")
 	flagAuditFile := fs.String("audit-file", "", "audit file path")
 	flagAuditURL := fs.String("audit-url", "", "audit remote url")
 	flagDatabaseDSN := fs.String("d", "", "database DSN")
 	flagHTTPS := fs.Bool("s", false, "enable HTTPS")
+	flagCert := fs.String("cert", "", "path to cert file")
+	flagKey := fs.String("key", "", "path to key file")
 
 	var configPath string
 	fs.StringVar(&configPath, "c", "", "config file path")
@@ -63,122 +54,79 @@ func NewAppConfig() *AppConfig {
 
 	_ = fs.Parse(os.Args[1:])
 
-	// ENV для config
 	if envConfig := os.Getenv("CONFIG"); envConfig != "" {
 		configPath = envConfig
 	}
 
-	// загрузка файла
-	fileCfg, _ := loadFromFile(configPath)
+	v := viper.New()
 
-	cfg := &AppConfig{}
+	// defaults
+	v.SetDefault("server_address", defaultServerAddress)
+	v.SetDefault("base_url", defaultBaseURL)
+	v.SetDefault("log_level", defaultLogLevel)
+	v.SetDefault("file_storage_path", defaultFileStoragePath)
+	v.SetDefault("secret_key", defaultSecretKey)
+	v.SetDefault("enable_https", false)
+	v.SetDefault("cert_file", defaultCertFile)
+	v.SetDefault("key_file", defaultKeyFile)
 
-	// ========================
-	// ServerAddress
-	cfg.ServerAddress = defaultServerAddress
-	if fileCfg.ServerAddress != "" {
-		cfg.ServerAddress = fileCfg.ServerAddress
+	// config file
+	if configPath != "" {
+		v.SetConfigFile(configPath)
+		_ = v.ReadInConfig()
 	}
+
+	// ENV (bind before flags)
+	v.AutomaticEnv()
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
+	// flags override config file
 	if *flagServer != "" {
-		cfg.ServerAddress = *flagServer
-	}
-	if val, ok := os.LookupEnv("SERVER_ADDRESS"); ok {
-		cfg.ServerAddress = val
-	}
-
-	// ========================
-	// BaseURL
-	cfg.BaseURL = defaultBaseURL
-	if fileCfg.BaseURL != "" {
-		cfg.BaseURL = fileCfg.BaseURL
+		v.Set("server_address", *flagServer)
 	}
 	if *flagBase != "" {
-		cfg.BaseURL = *flagBase
+		v.Set("base_url", *flagBase)
 	}
-	if val, ok := os.LookupEnv("BASE_URL"); ok {
-		cfg.BaseURL = val
+	if *flagLog != "" {
+		v.Set("log_level", *flagLog)
 	}
-
-	// ========================
-	// LogLevel
-	cfg.LogLevel = defaultLogLevel
-	if fileCfg.LogLevel != "" {
-		cfg.LogLevel = fileCfg.LogLevel
-	}
-	if *flagLogLevel != "" {
-		cfg.LogLevel = *flagLogLevel
-	}
-	if val, ok := os.LookupEnv("LOG_LEVEL"); ok {
-		cfg.LogLevel = val
-	}
-
-	// ========================
-	// FileStoragePath
-	cfg.FileStoragePath = defaultFileStoragePath
-	if fileCfg.FileStoragePath != "" {
-		cfg.FileStoragePath = fileCfg.FileStoragePath
-	}
-	if *flagFileStoragePath != "" {
-		cfg.FileStoragePath = *flagFileStoragePath
-	}
-	if val, ok := os.LookupEnv("FILE_STORAGE_PATH"); ok {
-		cfg.FileStoragePath = val
-	}
-
-	// ========================
-	// SecretKey (без файла)
-	if val, ok := os.LookupEnv("SECRET_KEY"); ok {
-		cfg.SecretKey = val
-	} else {
-		cfg.SecretKey = defaultSecretKey
-	}
-
-	// ========================
-	// Database DSN
-	if fileCfg.DSN != "" {
-		cfg.DSN = fileCfg.DSN
+	if *flagFile != "" {
+		v.Set("file_storage_path", *flagFile)
 	}
 	if *flagDatabaseDSN != "" {
-		cfg.DSN = *flagDatabaseDSN
-	}
-	if val, ok := os.LookupEnv("DATABASE_DSN"); ok {
-		cfg.DSN = val
-	}
-
-	// ========================
-	// AuditFile
-	if fileCfg.AuditFile != "" {
-		cfg.AuditFile = fileCfg.AuditFile
+		v.Set("database_dsn", *flagDatabaseDSN)
 	}
 	if *flagAuditFile != "" {
-		cfg.AuditFile = *flagAuditFile
-	}
-	if val, ok := os.LookupEnv("AUDIT_FILE"); ok {
-		cfg.AuditFile = val
-	}
-
-	// ========================
-	// AuditURL
-	if fileCfg.AuditURL != "" {
-		cfg.AuditURL = fileCfg.AuditURL
+		v.Set("audit_file", *flagAuditFile)
 	}
 	if *flagAuditURL != "" {
-		cfg.AuditURL = *flagAuditURL
-	}
-	if val, ok := os.LookupEnv("AUDIT_URL"); ok {
-		cfg.AuditURL = val
-	}
-
-	// ========================
-	// EnableHTTPS
-	if fileCfg.EnableHTTPS {
-		cfg.EnableHTTPS = true
+		v.Set("audit_url", *flagAuditURL)
 	}
 	if *flagHTTPS {
-		cfg.EnableHTTPS = true
+		v.Set("enable_https", true)
 	}
-	if val, ok := os.LookupEnv("ENABLE_HTTPS"); ok && val == "true" {
-		cfg.EnableHTTPS = true
+	if *flagCert != "" {
+		v.Set("cert_file", *flagCert)
+	}
+	if *flagKey != "" {
+		v.Set("key_file", *flagKey)
+	}
+
+	// повторно применяем ENV, чтобы он имел последний приоритет
+	for _, key := range []string{
+		"SERVER_ADDRESS", "BASE_URL", "LOG_LEVEL", "FILE_STORAGE_PATH",
+		"SECRET_KEY", "DATABASE_DSN", "AUDIT_FILE", "AUDIT_URL",
+		"ENABLE_HTTPS", "CERT_FILE", "KEY_FILE",
+	} {
+		if val, ok := os.LookupEnv(key); ok {
+			k := strings.ToLower(strings.ReplaceAll(key, "_", "_"))
+			v.Set(k, val)
+		}
+	}
+
+	cfg := &AppConfig{}
+	if err := v.Unmarshal(cfg); err != nil {
+		panic(err)
 	}
 
 	return cfg

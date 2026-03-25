@@ -7,6 +7,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -34,6 +35,7 @@ func printBuildInfo() {
 
 func main() {
 	printBuildInfo()
+
 	appCfg := config.NewAppConfig()
 
 	log, err := logger.Initialize(appCfg.LogLevel)
@@ -63,8 +65,17 @@ func main() {
 		auditor.Register(httpObs)
 	}
 
+	var wg sync.WaitGroup
+
+	pprofSrv := &http.Server{
+		Addr:    "localhost:6060",
+		Handler: nil,
+	}
+
+	wg.Add(1)
 	go func() {
-		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+		defer wg.Done()
+		if err := pprofSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Error("pprof server error", zap.Error(err))
 		}
 	}()
@@ -77,41 +88,43 @@ func main() {
 		Handler: router,
 	}
 
-	certFile := "cert.pem"
-	keyFile := "key.pem"
-
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		if appCfg.EnableHTTPS {
 			log.Info("HTTPS server listening", zap.String("address", appCfg.ServerAddress))
-
-			if err := srv.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
+			if err := srv.ListenAndServeTLS(appCfg.CertFile, appCfg.KeyFile); err != nil && err != http.ErrServerClosed {
 				log.Fatal("server error", zap.Error(err))
 			}
 		} else {
 			log.Info("HTTP server listening", zap.String("address", appCfg.ServerAddress))
-
 			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				log.Fatal("server error", zap.Error(err))
 			}
 		}
 	}()
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit,
+	ctx, stop := signal.NotifyContext(context.Background(),
 		syscall.SIGINT,
 		syscall.SIGTERM,
 		syscall.SIGQUIT,
 	)
+	defer stop()
 
-	<-quit
-	log.Info("shutting down server...")
+	<-ctx.Done()
+	log.Info("shutting down servers...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Error("server shutdown failed", zap.Error(err))
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Error("main server shutdown failed", zap.Error(err))
 	}
 
-	log.Info("server exited properly")
+	if err := pprofSrv.Shutdown(shutdownCtx); err != nil {
+		log.Error("pprof server shutdown failed", zap.Error(err))
+	}
+
+	wg.Wait()
+	log.Info("all servers exited properly")
 }

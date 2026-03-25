@@ -1,0 +1,13 @@
+{
+  "server_address": "localhost:8080",
+  "base_url": "http://localhost:8080",
+  "log_level": "info",
+  "file_storage_path": "shortened_urls.json",
+  "secret_key": "super-secret-key",
+  "database_dsn": "postgres://user:pass@localhost:5432/db",
+  "audit_file": "audit.log",
+  "audit_url": "http://audit-service.local",
+  "enable_https": false,
+  "cert_file": "cert.pem",
+  "key_file": "key.pem"
+}
