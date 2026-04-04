@@ -81,7 +81,7 @@ func main() {
 	}()
 
 	shortener := service.NewShortenerService(repo)
-	router := handler.NewRouter(shortener, appCfg.BaseURL, log, repo, appCfg.SecretKey, auditor)
+	router := handler.NewRouter(shortener, appCfg.BaseURL, log, repo, appCfg.SecretKey, auditor, appCfg.TrustedSubnet)
 
 	srv := &http.Server{
 		Addr:    appCfg.ServerAddress,

@@ -278,6 +278,27 @@ func DeleteUserURLsHandler(
 	w.WriteHeader(http.StatusAccepted)
 }
 
+func StatsHandler(w http.ResponseWriter, r *http.Request, repo repository.Repository, trustedSubnet string) {
+	if !isIPTrusted(r, trustedSubnet) {
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
+
+	urls, users, err := repo.GetStats(r.Context())
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	resp := map[string]int{
+		"urls":  urls,
+		"users": users,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
 // NewRouter настраивает маршрутизацию HTTP-запросов,
 // подключает middleware и регистрирует все эндпоинты сервиса.
 func NewRouter(
@@ -287,6 +308,7 @@ func NewRouter(
 	repo repository.Repository,
 	secretKey string,
 	auditor *audit.Auditor,
+	trustedSubnet string,
 ) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler { return logger.RequestLogger(log, next) })
@@ -313,6 +335,9 @@ func NewRouter(
 	})
 	r.Delete("/api/user/urls", func(w http.ResponseWriter, r *http.Request) {
 		DeleteUserURLsHandler(w, r, s)
+	})
+	r.Get("/api/internal/stats", func(w http.ResponseWriter, r *http.Request) {
+		StatsHandler(w, r, repo, trustedSubnet)
 	})
 	return r
 }

@@ -122,3 +122,17 @@ func (m *memoryStorage) MarkDeleted(ctx context.Context, userID string, shortIDs
 	}
 	return nil
 }
+
+func (m *memoryStorage) GetStats(ctx context.Context) (int, int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	urls := len(m.data)
+
+	usersMap := make(map[string]struct{})
+	for _, rec := range m.data {
+		usersMap[rec.UserID] = struct{}{}
+	}
+
+	return urls, len(usersMap), nil
+}
