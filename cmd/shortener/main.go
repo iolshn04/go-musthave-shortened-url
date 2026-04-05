@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -15,10 +16,13 @@ import (
 
 	"github.com/iolshn04/go-musthave-shortened-url/internal/audit"
 	"github.com/iolshn04/go-musthave-shortened-url/internal/config"
+	grpcserver "github.com/iolshn04/go-musthave-shortened-url/internal/grpc"
+	pb "github.com/iolshn04/go-musthave-shortened-url/internal/grpc/proto"
 	"github.com/iolshn04/go-musthave-shortened-url/internal/handler"
 	"github.com/iolshn04/go-musthave-shortened-url/internal/logger"
 	"github.com/iolshn04/go-musthave-shortened-url/internal/repository"
 	"github.com/iolshn04/go-musthave-shortened-url/internal/service"
+	"google.golang.org/grpc"
 )
 
 var (
@@ -65,8 +69,39 @@ func main() {
 		auditor.Register(httpObs)
 	}
 
+	shortener := service.NewShortenerService(repo)
+
 	var wg sync.WaitGroup
 
+	// ===== gRPC =====
+	grpcSrv := grpc.NewServer()
+
+	grpcHandler := &grpcserver.Server{
+		Service: shortener,
+		Repo:    repo,
+		BaseURL: appCfg.BaseURL,
+		Secret:  appCfg.SecretKey,
+	}
+
+	pb.RegisterShortenerServiceServer(grpcSrv, grpcHandler)
+
+	if appCfg.GRPCAddress != "" {
+		lis, err := net.Listen("tcp", appCfg.GRPCAddress)
+		if err != nil {
+			log.Fatal("grpc listen error", zap.Error(err))
+		}
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			log.Info("gRPC server started", zap.String("addr", appCfg.GRPCAddress))
+			if err := grpcSrv.Serve(lis); err != nil {
+				log.Error("grpc error", zap.Error(err))
+			}
+		}()
+	}
+
+	// ===== pprof =====
 	pprofSrv := &http.Server{
 		Addr:    "localhost:6060",
 		Handler: nil,
@@ -80,8 +115,16 @@ func main() {
 		}
 	}()
 
-	shortener := service.NewShortenerService(repo)
-	router := handler.NewRouter(shortener, appCfg.BaseURL, log, repo, appCfg.SecretKey, auditor, appCfg.TrustedSubnet)
+	// ===== HTTP =====
+	router := handler.NewRouter(
+		shortener,
+		appCfg.BaseURL,
+		log,
+		repo,
+		appCfg.SecretKey,
+		auditor,
+		appCfg.TrustedSubnet,
+	)
 
 	srv := &http.Server{
 		Addr:    appCfg.ServerAddress,
@@ -104,6 +147,7 @@ func main() {
 		}
 	}()
 
+	// ===== graceful shutdown =====
 	ctx, stop := signal.NotifyContext(context.Background(),
 		syscall.SIGINT,
 		syscall.SIGTERM,
@@ -124,6 +168,8 @@ func main() {
 	if err := pprofSrv.Shutdown(shutdownCtx); err != nil {
 		log.Error("pprof server shutdown failed", zap.Error(err))
 	}
+
+	grpcSrv.GracefulStop()
 
 	wg.Wait()
 	log.Info("all servers exited properly")
