@@ -158,3 +158,7 @@ func (f *fileStorage) MarkDeleted(ctx context.Context, userID string, ids []stri
 
 	return f.persist()
 }
+
+func (f *fileStorage) GetStats(ctx context.Context) (int, int, error) {
+	return f.mem.GetStats(ctx)
+}

@@ -20,6 +20,8 @@ type AppConfig struct {
 	EnableHTTPS     bool   `mapstructure:"enable_https"`
 	CertFile        string `mapstructure:"cert_file"`
 	KeyFile         string `mapstructure:"key_file"`
+	TrustedSubnet   string `mapstructure:"trusted_subnet"`
+	GRPCAddress     string `mapstructure:"grpc_address"`
 }
 
 // NewAppConfig загружает конфиг с приоритетом:
@@ -47,6 +49,8 @@ func NewAppConfig() *AppConfig {
 	flagHTTPS := fs.Bool("s", false, "enable HTTPS")
 	flagCert := fs.String("cert", "", "path to cert file")
 	flagKey := fs.String("key", "", "path to key file")
+	flagTrustedSubnet := fs.String("t", "", "trusted subnet in CIDR")
+	flagGRPC := fs.String("g", "", "grpc address")
 
 	var configPath string
 	fs.StringVar(&configPath, "c", "", "config file path")
@@ -111,12 +115,18 @@ func NewAppConfig() *AppConfig {
 	if *flagKey != "" {
 		v.Set("key_file", *flagKey)
 	}
+	if *flagTrustedSubnet != "" {
+		v.Set("trusted_subnet", *flagTrustedSubnet)
+	}
+	if *flagGRPC != "" {
+		v.Set("grpc_address", *flagGRPC)
+	}
 
 	// повторно применяем ENV, чтобы он имел последний приоритет
 	for _, key := range []string{
 		"SERVER_ADDRESS", "BASE_URL", "LOG_LEVEL", "FILE_STORAGE_PATH",
 		"SECRET_KEY", "DATABASE_DSN", "AUDIT_FILE", "AUDIT_URL",
-		"ENABLE_HTTPS", "CERT_FILE", "KEY_FILE",
+		"ENABLE_HTTPS", "CERT_FILE", "KEY_FILE", "TRUSTED_SUBNET", "GRPC_ADDRESS",
 	} {
 		if val, ok := os.LookupEnv(key); ok {
 			k := strings.ToLower(strings.ReplaceAll(key, "_", "_"))

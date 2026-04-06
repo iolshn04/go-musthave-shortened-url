@@ -150,6 +150,29 @@ func (m *mockRepo) MarkDeleted(
 	return nil
 }
 
+func (m *mockRepo) GetStats(ctx context.Context) (int, int, error) {
+	select {
+	case <-ctx.Done():
+		return 0, 0, ctx.Err()
+	default:
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	urls := 0
+	userSet := make(map[string]struct{})
+
+	for _, rec := range m.data {
+		if !rec.Deleted {
+			urls++
+			userSet[rec.UserID] = struct{}{}
+		}
+	}
+
+	return urls, len(userSet), nil
+}
+
 func TestShortenerService_ShortenAndGet(t *testing.T) {
 	repo := newMockRepo()
 	s := NewShortenerService(repo)

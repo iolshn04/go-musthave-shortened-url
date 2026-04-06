@@ -15,4 +15,5 @@ type Repository interface {
 	GetByUser(ctx context.Context, userID string) ([]model.UserURL, error)
 	Ping(ctx context.Context) error
 	MarkDeleted(ctx context.Context, userID string, shortIDs []string) error
+	GetStats(ctx context.Context) (urls int, users int, err error)
 }
