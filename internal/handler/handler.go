@@ -278,14 +278,15 @@ func DeleteUserURLsHandler(
 	w.WriteHeader(http.StatusAccepted)
 }
 
-func StatsHandler(w http.ResponseWriter, r *http.Request, repo repository.Repository, trustedSubnet string) {
-	if !isIPTrusted(r, trustedSubnet) {
-		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		return
-	}
-
+func StatsHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+	repo repository.Repository,
+	log *zap.Logger,
+) {
 	urls, users, err := repo.GetStats(r.Context())
 	if err != nil {
+		log.Error("stats failed", zap.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
@@ -336,8 +337,12 @@ func NewRouter(
 	r.Delete("/api/user/urls", func(w http.ResponseWriter, r *http.Request) {
 		DeleteUserURLsHandler(w, r, s)
 	})
-	r.Get("/api/internal/stats", func(w http.ResponseWriter, r *http.Request) {
-		StatsHandler(w, r, repo, trustedSubnet)
-	})
+	r.Get("/api/internal/stats",
+		middlewares.TrustedSubnetMiddleware(trustedSubnet)(
+			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				StatsHandler(w, r, repo, log)
+			}),
+		).ServeHTTP,
+	)
 	return r
 }

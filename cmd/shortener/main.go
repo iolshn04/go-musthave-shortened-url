@@ -74,13 +74,18 @@ func main() {
 	var wg sync.WaitGroup
 
 	// ===== gRPC =====
-	grpcSrv := grpc.NewServer()
+	grpcSrv := grpc.NewServer(
+		grpc.ChainUnaryInterceptor(
+			grpcserver.AuthInterceptor(appCfg.SecretKey),
+			grpcserver.TrustedSubnetInterceptor(appCfg.TrustedSubnet),
+		),
+	)
 
 	grpcHandler := &grpcserver.Server{
 		Service: shortener,
 		Repo:    repo,
 		BaseURL: appCfg.BaseURL,
-		Secret:  appCfg.SecretKey,
+		Logger:  log,
 	}
 
 	pb.RegisterShortenerServiceServer(grpcSrv, grpcHandler)
